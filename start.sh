@@ -1,10 +1,11 @@
 #!/bin/bash
 echo "Starting HomeServer..."
 
+cd "$(dirname "$0")"
+source env/bin/activate
+
 cd backend
-source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
-deactivate
 cd ..
 
 echo ""

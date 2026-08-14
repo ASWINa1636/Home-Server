@@ -1,81 +1,79 @@
 # ==========================================
-# Python
+# Environments & Secrets
 # ==========================================
-
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
+.env
+.env.*
+*.env
+backend/.env
+!.env.example
+!backend/.env.example
 
 # Virtual environments
 env/
 venv/
 .venv/
+ENV/
+env.bak/
+venv.bak/
 
 # ==========================================
-# Environment / Secrets
+# User Uploads & Storage Data
 # ==========================================
-
-.env
-.env.*
-!.env.example
+storage/
+backend/storage/
+uploads/
+backend/uploads/
 
 # ==========================================
-# Database
+# Databases & SQLite
 # ==========================================
-
 *.db
 *.sqlite
 *.sqlite3
-
-# Specifically your local database
+backend/*.db
 backend/homeserver.db
 
 # ==========================================
-# React / Node
+# Python & Bytecode
 # ==========================================
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-node_modules/
-frontend/node_modules/
-
-# Vite production build
-frontend/dist/
-
-# ==========================================
-# Logs
-# ==========================================
-
-*.log
-logs/
-
-# ==========================================
-# Build / Cache
-# ==========================================
-
+# Python testing & linting caches
 .cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # ==========================================
-# IDE
+# Node.js & React (Frontend)
 # ==========================================
+node_modules/
+**/node_modules/
+frontend/node_modules/
 
+# Vite production build output
+dist/
+frontend/dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# IDE & System Files
+# ==========================================
 .vscode/
 .idea/
-
-# ==========================================
-# OS
-# ==========================================
-
-.DS_Store
-Thumbs.db
-
-# ==========================================
-# Temporary files
-# ==========================================
-
-*.tmp
-*.temp
 *.swp
 *.swo
+*~
+.DS_Store
+Thumbs.db

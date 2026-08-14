@@ -1,335 +1,165 @@
-# HomeServer — Tailscale Multi-Device Access
+# 🏠 HomeServer — Modern, Hardened Private Cloud & Video Streaming
 
-This guide explains how to run the HomeServer backend and access it from
-other devices through your existing Tailscale network.
-
-## 1. Prerequisites
-
-On the HomeServer:
-
-- Ubuntu/Linux
-- Python virtual environment
-- Tailscale installed and connected
-- HomeServer project located at `~/homeserver`
-
-On every client device:
-
-- Tailscale installed
-- Logged into the same Tailscale account/tailnet
+**HomeServer** is a modern, security-hardened private cloud storage and video streaming application built with **FastAPI** (Python) and **React + Vite**. It allows you to upload, manage, search, and stream your personal files and media securely across your local network or remotely via **Tailscale**.
 
 ---
 
-## 2. Start Tailscale
+## ✨ Features
 
-Check whether Tailscale is connected:
-
-```bash
-tailscale status
-```
-
-Get the HomeServer's Tailscale IP:
-
-```bash
-tailscale ip
-```
-
-Example:
-
-```text
-100.101.102.103
-```
-
-The `100.x.x.x` address is the address to use from other Tailscale devices.
-
-You can also see all connected devices with:
-
-```bash
-tailscale status
-```
+### 🛡️ Security Hardening
+- **Mandatory `SECRET_KEY` Enforcement**: Fails startup if `SECRET_KEY` is missing or uses a default fallback.
+- **Configurable CORS Lockdown**: Strict origin checks using `ALLOWED_ORIGINS` (no wildcard `*`).
+- **Rate Limiting**: Protected authentication endpoints (`/api/auth/login` at 5 req/min, `/api/auth/signup` at 3 req/min) using `slowapi`.
+- **Password Complexity Validation**: Enforces minimum length, uppercase, lowercase, digit, and special character requirements.
+- **Security Headers Middleware**: Applies `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and `Permissions-Policy`.
+- **Filename & Path Traversal Sanitization**: Prevents directory traversal attacks (`..`) across all file uploads, reads, downloads, renames, and deletions.
+- **50GB File Upload Limit**: Enforces maximum upload sizes via stream-counting bytes.
+- **Secure Error Handling**: Sanitized error responses prevent backend stack traces from leaking to clients.
 
 ---
 
-## 3. Start the HomeServer backend
-
-Open a terminal on the HomeServer:
-
-```bash
-cd ~/homeserver/backend
-```
-
-Activate the Python environment:
-
-```bash
-source ../env/bin/activate
-```
-
-Start FastAPI so it accepts connections from the network:
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-You should see:
-
-```text
-Uvicorn running on http://0.0.0.0:8000
-Application startup complete.
-```
-
-Keep this terminal running.
+### 🎨 Modern Glassmorphic UI & Design System
+- **Dark Theme Aesthetic**: Built with modern CSS variables, glassmorphic cards (`backdrop-filter`), gradient accents, and animated ambient orbs.
+- **Interactive File Dashboard**:
+  - Grid & List view toggle.
+  - Category filters: All Files, Videos, Music, Images, Documents, Archives.
+  - Sort by Name (A-Z / Z-A), Size, or Date.
+  - Instant live search and breadcrumb navigation.
+  - Multi-select bulk actions (download zip, delete multiple).
+- **Upload Zone**: Fullscreen drag-and-drop overlay, folder structure preservation, individual progress bars per file queue.
+- **Real-Time Password Strength Meter**: Live requirement checks and progress indicator during registration.
+- **Toast Notification System**: Animated slide-in toasts for success, error, warning, and info alerts.
 
 ---
 
-## 4. Access from another laptop/PC
-
-Make sure Tailscale is running on the client device.
-
-If the HomeServer Tailscale IP is:
-
-```text
-100.101.102.103
-```
-
-open:
-
-```text
-http://100.101.102.103:8000
-```
-
-The general format is:
-
-```text
-http://<HOMESERVER-TAILSCALE-IP>:8000
-```
-
-Example:
-
-```text
-http://100.101.102.103:8000
-```
+### 🎬 Netflix-Style Custom Video Player
+- **Cinematic Experience**: Auto-hiding control overlays (3-second timeout), top title bar, center play/pause badge animations.
+- **Advanced Playback**:
+  - Custom seek bar with hover time tooltip and buffered range indicator.
+  - Playback speed selector (`0.5x`, `0.75x`, `1x`, `1.25x`, `1.5x`, `2x`).
+  - Volume slider with one-click mute/unmute.
+  - Fullscreen & Picture-in-Picture (PiP) support.
+- **Zoom & Pan Controls**:
+  - **1x to 4x Zoom**: Smooth zoom control via UI buttons or `Ctrl + Mouse Scroll`.
+  - **Pan Support**: Click-and-drag or touch-drag when zoomed in.
+  - **Ken Burns Effect**: Toggleable automatic ambient zoom & pan algorithm for slideshows or background media playback.
+- **Keyboard Shortcuts**:
+  - `Space` / `K` — Play / Pause
+  - `Left` / `Right` arrows — Rewind / Fast-Forward 10 seconds
+  - `Up` / `Down` arrows — Volume Up / Down
+  - `F` — Toggle Fullscreen
+  - `M` — Mute / Unmute
+  - `P` — Picture-in-Picture
+  - `<` / `>` — Decrease / Increase Playback Speed
+  - `Esc` — Exit Fullscreen / Close Player
 
 ---
 
-## 5. Access from a phone
+## 🚀 Quick Start
 
-1. Install Tailscale on the phone.
-2. Log into the same Tailscale account/tailnet.
-3. Make sure the HomeServer appears as connected.
-4. Open a browser.
-5. Enter:
+### 1. Installation
+Clone the repository and run the setup script:
 
-```text
-http://<HOMESERVER-TAILSCALE-IP>:8000
+```bash
+cd ~/homeserver
+bash install.sh
 ```
 
-Example:
-
-```text
-http://100.101.102.103:8000
-```
-
-The phone does NOT need to be connected to the same Wi-Fi. Tailscale provides the private network connection.
+This will:
+1. Create a Python virtual environment (`env/`).
+2. Install Python dependencies from `backend/requirements.txt`.
+3. Generate a `backend/.env` configuration file with a strong random `SECRET_KEY`.
+4. Install frontend packages and compile production assets to `frontend/dist/`.
 
 ---
 
-## 6. Test the API
-
-FastAPI documentation:
-
-```text
-http://<HOMESERVER-TAILSCALE-IP>:8000/docs
-```
-
-Example:
-
-```text
-http://100.101.102.103:8000/docs
-```
-
-Test from another device:
+### 2. Launching HomeServer
+Run the start script:
 
 ```bash
-curl http://<HOMESERVER-TAILSCALE-IP>:8000
+./start.sh
 ```
 
-Example:
+Output:
+```text
+Starting HomeServer...
 
-```bash
-curl http://100.101.102.103:8000
+Server running at:
+  Local:   http://localhost:8000
+  Network: http://192.168.29.17:8000
+
+Press Ctrl+C to stop
+```
+
+Open `http://localhost:8000` in your web browser.
+
+---
+
+## ⚙️ Configuration (`backend/.env`)
+
+You can edit `backend/.env` to configure server settings:
+
+```ini
+# Mandatory high-entropy secret key for JWT tokens
+SECRET_KEY=your_strong_random_secret_key_here
+
+# Allowed origins for CORS (comma-separated)
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000
+
+# File upload limit (in bytes) — Default is 50GB
+MAX_UPLOAD_SIZE=53687091200
+
+# File storage directory (relative to backend/)
+STORAGE_DIR=./storage
 ```
 
 ---
 
-## 7. If the connection does not work
+## 📱 Mobile & Tailscale Access
 
-### Check Tailscale
+### Accessing on Local Wi-Fi
+1. Connect your phone/tablet to the same Wi-Fi network.
+2. Open your mobile browser and enter the server's local IP address (e.g. `http://192.168.29.17:8000`).
 
-On the HomeServer:
+### Accessing Remotely via Tailscale
+1. Install **Tailscale** on your server and mobile device/laptop.
+2. Connect both devices to your Tailnet.
+3. Get your server's Tailscale IP:
+   ```bash
+   tailscale ip
+   ```
+4. Access the web app from anywhere at `http://<TAILSCALE-IP>:8000`.
 
-```bash
-tailscale status
-```
+---
 
-and:
-
-```bash
-tailscale ip
-```
-
-### Check that Uvicorn is listening
-
-Run:
-
-```bash
-ss -ltnp | grep 8000
-```
-
-You want to see something similar to:
+## 📂 Project Architecture
 
 ```text
-0.0.0.0:8000
-```
-
-If you see:
-
-```text
-127.0.0.1:8000
-```
-
-the server is only accessible locally. Start it with:
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Check the firewall
-
-If UFW is enabled:
-
-```bash
-sudo ufw status
-```
-
-Allow port 8000 if necessary:
-
-```bash
-sudo ufw allow 8000/tcp
+homeserver/
+├── backend/
+│   ├── main.py           # FastAPI app entry point & route definitions
+│   ├── auth.py           # JWT authentication & password validation
+│   ├── files.py          # File operations, uploads, streaming & range requests
+│   ├── middleware.py     # Security headers & HTTP range request middleware
+│   ├── database.py       # SQLAlchemy database connection
+│   ├── models.py         # Database models (User)
+│   ├── requirements.txt  # Python package dependencies
+│   └── .env.example      # Environment variable template
+├── frontend/
+│   ├── src/
+│   │   ├── components/   # Sidebar, FileGrid, FileList, UploadZone, VideoPlayer, etc.
+│   │   ├── contexts/     # AuthContext, ToastContext
+│   │   ├── pages/        # Login, Signup, Dashboard
+│   │   ├── utils/        # File extension, size & icon utilities
+│   │   ├── App.jsx       # Main application routes & layout
+│   │   └── index.css     # Design system & global glassmorphic CSS
+│   └── dist/             # Compiled production bundle served by FastAPI
+├── install.sh            # One-click installation script
+├── start.sh              # Startup script
+└── README.md             # Project documentation
 ```
 
 ---
 
-## 8. Authentication
-
-The HomeServer API contains protected endpoints.
-
-For example:
-
-```text
-GET /api/files/list?folder=all
-```
-
-may return:
-
-```text
-401 Unauthorized
-```
-
-when the client is not authenticated.
-
-This does NOT necessarily mean the server is unreachable.
-
-The expected flow is:
-
-```text
-Client
-   |
-   | Tailscale
-   v
-HomeServer
-   |
-   | Port 8000
-   v
-FastAPI
-   |
-   | Login
-   v
-Authentication
-   |
-   v
-Protected API
-```
-
-If the application opens but `/api/files/list` returns `401`, check the application's login/token handling.
-
----
-
-## 9. Recommended startup routine
-
-Every time you want to use the HomeServer:
-
-### Terminal 1
-
-```bash
-tailscale status
-tailscale ip
-```
-
-Record the `100.x.x.x` address.
-
-### Terminal 2
-
-```bash
-cd ~/homeserver/backend
-source ../env/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Client device
-
-Open:
-
-```text
-http://<TAILSCALE-IP>:8000
-```
-
----
-
-## 10. Quick reference
-
-| Purpose | Command / URL |
-|---|---|
-| Check Tailscale | `tailscale status` |
-| Get Tailscale IP | `tailscale ip` |
-| Start backend | `uvicorn main:app --host 0.0.0.0 --port 8000 --reload` |
-| Check port | `ss -ltnp \| grep 8000` |
-| Web app | `http://<TAILSCALE-IP>:8000` |
-| API docs | `http://<TAILSCALE-IP>:8000/docs` |
-
-### Example
-
-If:
-
-```text
-tailscale ip
-```
-
-returns:
-
-```text
-100.101.102.103
-```
-
-then use:
-
-```text
-Web App:  http://100.101.102.103:8000
-API:      http://100.101.102.103:8000/docs
-```
-
----
-
-## Security note
-
-Do not expose port 8000 directly to the public internet with router port forwarding.
-
-For remote access, keep the service inside your Tailscale network or put it behind a properly configured production reverse proxy.
+## 🔒 Security Note
+Do **not** expose port 8000 directly to the public internet using router port forwarding. Use **Tailscale** or a properly configured reverse proxy (such as Nginx or Caddy with SSL) for secure remote access.
