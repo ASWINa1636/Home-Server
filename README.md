@@ -55,6 +55,21 @@
 
 ---
 
+### 🔐 Admin Dashboard
+- Full user management with storage quotas, device tracking, and account control.
+- Storage increase requests with admin approval/rejection workflow.
+- User ↔ Admin messaging system.
+- Account deletion request management.
+- Audit logging of all admin actions.
+- Auto-refresh with configurable intervals.
+
+### 🔑 Password Management
+- **Forgot Password**: Secure token-based password reset (printed to server logs or optionally emailed).
+- **Change Password**: Authenticated users can change their password with automatic session rotation.
+- **Session Invalidation**: All existing JWT tokens are invalidated when a password is changed.
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Installation
@@ -109,8 +124,8 @@ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000
 # File upload limit (in bytes) — Default is 50GB
 MAX_UPLOAD_SIZE=53687091200
 
-# File storage directory (relative to backend/)
-STORAGE_DIR=./storage
+# File storage directory
+STORAGE_PATH=/data/uploads
 ```
 
 ---
@@ -132,6 +147,42 @@ STORAGE_DIR=./storage
 
 ---
 
+## 🌐 Public Access via Tailscale Funnel
+
+You can expose your HomeServer to the public internet securely using **Tailscale Funnel**. This allows anyone (even people without Tailscale) to access your server using a public HTTPS link!
+
+### How it works
+Tailscale Funnel can be permanently configured to run in the background as a service. Once configured, you never need to enter your password or manually start it again. As long as your HomeServer is running on port 8000, Tailscale will magically route public HTTPS traffic to it!
+
+### Step-by-Step Setup
+1. **Enable Funnel:** Go to the [Tailscale Funnel settings](https://login.tailscale.com/f/funnel) and ensure it is turned on for your account.
+2. **Configure the Background Proxy (Run this ONCE):**
+   Open a terminal and run the following command to permanently configure the Funnel in the background:
+   ```bash
+   sudo tailscale funnel --bg 8000
+   ```
+   *(Enter your password when prompted. It will say "Funnel started and running in the background.")*
+3. **Start your Server:**
+   You can now start your web server using your custom shortcut from anywhere:
+   ```bash
+   homeserver
+   ```
+4. **Access your server:**
+   Your public link will now work flawlessly from any device in the world, even on LTE!
+   `Available on the internet: https://aswin-inspiron-3501.tailfcb304.ts.net/`
+
+### Customizing your Link
+By default, Tailscale generates a link using your machine's original hostname (e.g., `aswin-inspiron-3501.tailfcb304.ts.net`). You can easily customize this!
+
+1. Go to your **[Tailscale Admin Console](https://login.tailscale.com/admin/machines)**.
+2. Find your laptop in the list, click the three dots (`...`) on the right, and choose **Edit machine name**.
+3. Change it to something cleaner, like `cloud`, `server`, or `homeserver`.
+4. Your public link will instantly update (e.g., `https://cloud.tailfcb304.ts.net/`)!
+
+---
+
+
+
 ## 📂 Project Architecture
 
 ```text
@@ -140,19 +191,25 @@ homeserver/
 │   ├── main.py           # FastAPI app entry point & route definitions
 │   ├── auth.py           # JWT authentication & password validation
 │   ├── files.py          # File operations, uploads, streaming & range requests
-│   ├── middleware.py     # Security headers & HTTP range request middleware
+│   ├── admin.py          # Admin dashboard API routes
+│   ├── middleware.py      # Security headers & HTTP range request middleware
 │   ├── database.py       # SQLAlchemy database connection
-│   ├── models.py         # Database models (User)
+│   ├── models.py         # Database models (User, FileRecord, Device, etc.)
+│   ├── promote_admin.py  # CLI script to promote a user to admin
 │   ├── requirements.txt  # Python package dependencies
 │   └── .env.example      # Environment variable template
 ├── frontend/
 │   ├── src/
-│   │   ├── components/   # Sidebar, FileGrid, FileList, UploadZone, VideoPlayer, etc.
+│   │   ├── components/   # Sidebar, FileGrid, FileList, UploadZone, VideoPlayer, Modals
 │   │   ├── contexts/     # AuthContext, ToastContext
-│   │   ├── pages/        # Login, Signup, Dashboard
+│   │   ├── hooks/        # useAutoRefresh
+│   │   ├── pages/        # Login, Signup, Dashboard, ResetPassword, Admin/*
 │   │   ├── utils/        # File extension, size & icon utilities
+│   │   ├── api.js        # Axios API client with configurable base URL
 │   │   ├── App.jsx       # Main application routes & layout
 │   │   └── index.css     # Design system & global glassmorphic CSS
+│   ├── vercel.json       # Vercel SPA routing configuration
+│   ├── .env.example      # Frontend environment variable template
 │   └── dist/             # Compiled production bundle served by FastAPI
 ├── install.sh            # One-click installation script
 ├── start.sh              # Startup script
@@ -162,4 +219,4 @@ homeserver/
 ---
 
 ## 🔒 Security Note
-Do **not** expose port 8000 directly to the public internet using router port forwarding. Use **Tailscale** or a properly configured reverse proxy (such as Nginx or Caddy with SSL) for secure remote access.
+Do **not** expose port 8000 directly to the public internet using router port forwarding. Use **Tailscale** (private access) or **Tailscale Funnel** (public access with TLS) for secure remote access.
