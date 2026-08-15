@@ -3,12 +3,9 @@ Security middleware for HomeServer.
 Adds security headers to every response to harden against common web attacks.
 """
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.datastructures import MutableHeaders
 
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """
     Adds defensive HTTP headers to all responses:
     - X-Content-Type-Options: prevents MIME-sniffing
@@ -18,48 +15,40 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - Content-Security-Policy: restricts resource loading
     - Permissions-Policy: disables unused browser features
     """
+    def __init__(self, app):
+        self.app = app
 
-    async def dispatch(self, request: Request, call_next) -> Response:
-        response = await call_next(request)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
 
-        # Prevent MIME-type sniffing
-        response.headers["X-Content-Type-Options"] = "nosniff"
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.append("X-Content-Type-Options", "nosniff")
+                headers.append("X-Frame-Options", "DENY")
+                headers.append("Referrer-Policy", "strict-origin-when-cross-origin")
+                headers.append("X-XSS-Protection", "1; mode=block")
+                headers.append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';")
+                headers.append("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+            await send(message)
 
-        # Prevent embedding in iframes (clickjacking protection)
-        response.headers["X-Frame-Options"] = "DENY"
-
-        # Control referrer information sent with requests
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Legacy XSS filter (still respected by some browsers)
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-
-        # Content Security Policy — restrictive but allows the app to function
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "img-src 'self' data: blob:; "
-            "media-src 'self' blob:; "
-            "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self';"
-        )
-
-        # Disable unnecessary browser features
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), payment=()"
-        )
-
-        return response
+        await self.app(scope, receive, send_wrapper)
 
 
-class RangeRequestMiddleware(BaseHTTPMiddleware):
+class RangeRequestMiddleware:
     """Adds Accept-Ranges header to signal range-request support for streaming."""
+    def __init__(self, app):
+        self.app = app
 
-    async def dispatch(self, request: Request, call_next) -> Response:
-        response = await call_next(request)
-        response.headers["Accept-Ranges"] = "bytes"
-        return response
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.append("Accept-Ranges", "bytes")
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)

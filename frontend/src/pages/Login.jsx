@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import api from '../api';
 import { Eye, EyeOff, LogIn, Server } from 'lucide-react';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
@@ -14,6 +15,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const { login } = useAuth();
   const { addToast } = useToast();
 
@@ -28,7 +30,7 @@ export default function Login() {
     setError('');
     try {
       const res = await api.post('/api/auth/login', form);
-      login(res.data.token, res.data.username);
+      login(res.data.token, res.data.username, res.data.is_admin);
       addToast(`Welcome back, ${res.data.username}!`, 'success');
     } catch (err) {
       const msg = err.response?.data?.detail || 'Invalid username or password';
@@ -113,6 +115,15 @@ export default function Login() {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+              <button 
+                type="button" 
+                style={{ background: 'none', border: 'none', color: '#a78bfa', fontSize: 13, cursor: 'pointer', padding: 0 }}
+                onClick={() => setShowForgotPassword(true)}
+              >
+                Forgot Password?
+              </button>
+            </div>
           </div>
 
           <button
@@ -139,6 +150,11 @@ export default function Login() {
           <Link to="/signup" style={styles.link}>Create one</Link>
         </p>
       </div>
+
+      <ForgotPasswordModal 
+        isOpen={showForgotPassword} 
+        onClose={() => setShowForgotPassword(false)} 
+      />
     </div>
   );
 }

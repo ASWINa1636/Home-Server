@@ -1,11 +1,15 @@
 /**
- * Sidebar.jsx — Collapsible sidebar with navigation, storage info, user controls.
+ * Sidebar.jsx — Collapsible sidebar with navigation, storage quota info, admin link, user controls.
  */
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Home, Film, Image, Music, FileText, Archive, HardDrive,
-  LogOut, Menu, X, Server, FolderOpen
+  LogOut, Menu, X, Server, Shield, MessageSquare, UserX, Lock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import StorageBar from './admin/StorageBar';
+import api from '../api';
 
 const NAV_ITEMS = [
   { id: 'all', label: 'All Files', icon: Home },
@@ -16,19 +20,20 @@ const NAV_ITEMS = [
   { id: 'archive', label: 'Archives', icon: Archive },
 ];
 
-export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle, fileStats }) {
-  const { username, logout } = useAuth();
+export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle, fileStats, onRequestStorage, onContactAdmin, onRequestDeletion, onChangePassword }) {
+  const { username, logout, isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [storageInfo, setStorageInfo] = useState(null);
 
-  const totalSize = fileStats?.totalSize || 0;
-  const totalFiles = fileStats?.totalFiles || 0;
+  useEffect(() => {
+    api.get('/api/user/storage-info')
+      .then(res => setStorageInfo(res.data))
+      .catch(() => {});
+  }, [fileStats]);
 
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 ** 3) return (bytes / (1024 ** 2)).toFixed(1) + ' MB';
-    return (bytes / (1024 ** 3)).toFixed(2) + ' GB';
-  };
+  const used = storageInfo?.used || fileStats?.totalSize || 0;
+  const quota = storageInfo?.quota || (5 * 1024 ** 3);
+  const percentage = storageInfo?.percentage || 0;
 
   return (
     <>
@@ -85,21 +90,64 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
               </button>
             );
           })}
+
+          {/* Admin link if user is admin */}
+          {isAdmin && (
+            <>
+              <div style={{ ...styles.navLabel, marginTop: 16 }}>Admin</div>
+              <button
+                style={styles.adminNavItem}
+                onClick={() => navigate('/admin')}
+              >
+                <Shield size={18} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <span>Admin Dashboard</span>
+              </button>
+            </>
+          )}
+
+          <div style={{ ...styles.navLabel, marginTop: 16 }}>Support & Account</div>
+          {onContactAdmin && (
+            <button
+              style={styles.navItem}
+              onClick={onContactAdmin}
+            >
+              <MessageSquare size={18} style={{ color: '#7c3aed', flexShrink: 0 }} />
+              <span>Contact Admin</span>
+            </button>
+          )}
+          {onChangePassword && (
+            <button
+              style={styles.navItem}
+              onClick={onChangePassword}
+            >
+              <Lock size={18} style={{ color: '#10b981', flexShrink: 0 }} />
+              <span>Change Password</span>
+            </button>
+          )}
+          {onRequestDeletion && (
+            <button
+              style={{ ...styles.navItem, color: '#ef4444' }}
+              onClick={onRequestDeletion}
+            >
+              <UserX size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+              <span>Delete Account</span>
+            </button>
+          )}
         </nav>
 
-        {/* Storage info */}
+        {/* Storage info with progress bar */}
         <div style={styles.storageSection}>
-          <div style={styles.navLabel}>Storage</div>
+          <div style={styles.navLabel}>Storage Quota</div>
           <div style={styles.storageCard}>
-            <HardDrive size={18} style={{ color: '#a78bfa' }} />
-            <div style={{ flex: 1 }}>
-              <div style={styles.storageText}>
-                {formatSize(totalSize)} used
-              </div>
-              <div style={styles.storageFiles}>
-                {totalFiles} file{totalFiles !== 1 ? 's' : ''}
-              </div>
-            </div>
+            <StorageBar used={used} quota={quota} height={6} />
+            {onRequestStorage && (
+              <button
+                style={styles.requestBtn}
+                onClick={onRequestStorage}
+              >
+                Request Storage
+              </button>
+            )}
           </div>
         </div>
 
@@ -109,7 +157,10 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
             <div style={styles.avatar}>
               {(username || 'U')[0].toUpperCase()}
             </div>
-            <span style={styles.username}>{username}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={styles.username}>{username}</div>
+              {isAdmin && <div style={styles.adminTag}>Admin</div>}
+            </div>
           </div>
           <button
             id="logout-btn"
@@ -146,8 +197,9 @@ const styles = {
     position: 'fixed',
     inset: 0,
     background: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
     zIndex: 99,
-    animation: 'fadeIn 0.2s ease',
   },
   sidebar: {
     position: 'fixed',
@@ -160,9 +212,9 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     zIndex: 100,
-    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
+    transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   logoArea: {
     display: 'flex',
@@ -197,8 +249,9 @@ const styles = {
     color: '#94a3b8',
     cursor: 'pointer',
     padding: 4,
-    display: 'flex',
+    borderRadius: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   nav: {
     flex: 1,
@@ -236,7 +289,24 @@ const styles = {
   },
   navItemActive: {
     color: '#e2e8f0',
-    background: 'rgba(124, 58, 237, 0.12)',
+    background: 'rgba(124, 58, 237, 0.15)',
+  },
+  adminNavItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '10px 12px',
+    fontSize: 14,
+    fontWeight: 500,
+    color: '#f59e0b',
+    background: 'rgba(245, 158, 11, 0.08)',
+    border: '1px solid rgba(245, 158, 11, 0.15)',
+    borderRadius: 10,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    textAlign: 'left',
+    fontFamily: 'inherit',
+    width: '100%',
   },
   activeIndicator: {
     position: 'absolute',
@@ -249,64 +319,77 @@ const styles = {
     background: 'linear-gradient(180deg, #7c3aed, #06b6d4)',
   },
   storageSection: {
-    padding: '0 12px 16px',
+    padding: '0 12px 12px',
   },
   storageCard: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '12px',
-    background: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 10,
+    background: 'rgba(255, 255, 255, 0.02)',
     border: '1px solid rgba(255, 255, 255, 0.04)',
+    borderRadius: 12,
+    padding: 12,
   },
-  storageText: {
-    fontSize: 13,
-    fontWeight: 500,
-    color: '#e2e8f0',
-  },
-  storageFiles: {
+  requestBtn: {
+    marginTop: 10,
+    width: '100%',
+    padding: '6px 0',
     fontSize: 12,
-    color: '#475569',
+    fontWeight: 500,
+    color: '#a78bfa',
+    background: 'rgba(124, 58, 237, 0.1)',
+    border: '1px solid rgba(124, 58, 237, 0.2)',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   userArea: {
+    padding: '12px 16px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.04)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 20px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.04)',
   },
   userInfo: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
+    minWidth: 0,
   },
   avatar: {
     width: 32,
     height: 32,
-    borderRadius: 10,
+    borderRadius: 8,
     background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
     color: '#fff',
+    flexShrink: 0,
   },
   username: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 500,
     color: '#e2e8f0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  adminTag: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: '#f59e0b',
+    textTransform: 'uppercase',
   },
   logoutBtn: {
     background: 'none',
     border: 'none',
-    color: '#475569',
+    color: '#94a3b8',
     cursor: 'pointer',
     padding: 6,
     borderRadius: 8,
     display: 'flex',
     alignItems: 'center',
-    transition: 'color 0.15s ease',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
   },
 };

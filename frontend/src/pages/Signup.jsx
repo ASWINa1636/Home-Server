@@ -107,7 +107,7 @@ export default function Signup() {
     setError('');
     try {
       const res = await api.post('/api/auth/signup', form);
-      login(res.data.token, res.data.username);
+      login(res.data.token, res.data.username, res.data.is_admin);
       addToast('Account created successfully!', 'success');
     } catch (err) {
       const msg = err.response?.data?.detail || 'Signup failed. Please try again.';

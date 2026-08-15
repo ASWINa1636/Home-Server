@@ -115,6 +115,7 @@ async def upload_file(
     user: User = Depends(get_current_user),
 ):
     """Upload a file to the server. Supports large files with streaming write."""
+    from sqlalchemy import func as sql_func
 
     # Check Content-Length header if provided
     content_length = request.headers.get("content-length")
@@ -124,6 +125,32 @@ async def upload_file(
             detail=f"File too large. Maximum upload size is {MAX_UPLOAD_SIZE // (1024**3)} GB",
         )
 
+    # --- Strict Quota Pre-Check (Before opening temp file or streaming) ---
+    current_usage = (
+        db.query(sql_func.coalesce(sql_func.sum(FileRecord.size), 0))
+        .filter(FileRecord.owner_id == user.id)
+        .scalar()
+    )
+    quota = user.storage_quota
+    remaining_quota = max(0, quota - current_usage) if quota > 0 else float("inf")
+
+    # Try getting file size from UploadFile or Content-Length header
+    file_size_hint = None
+    if hasattr(file, "size") and file.size and file.size > 0:
+        file_size_hint = file.size
+    elif content_length and content_length.isdigit():
+        file_size_hint = int(content_length)
+
+    if quota > 0 and file_size_hint is not None and file_size_hint > remaining_quota:
+        used_gb = current_usage / (1024 ** 3)
+        quota_gb = quota / (1024 ** 3)
+        req_gb = file_size_hint / (1024 ** 3)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload rejected (Strict Quota Check): File ({req_gb:.2f} GB) exceeds remaining quota. "
+                   f"Currently using {used_gb:.2f} GB of {quota_gb:.2f} GB. Request more storage from admin.",
+        )
+
     # Sanitize inputs
     safe_name = sanitize_filename(file.filename)
     safe_folder = sanitize_folder_path(folder)
@@ -131,7 +158,7 @@ async def upload_file(
     ext = os.path.splitext(safe_name)[1]
     unique_name = f"{uuid.uuid4()}{ext}"
 
-    # Write to SSD temp first (fast buffer), tracking total bytes
+    # Write to SSD temp first (fast buffer), checking quota on EACH chunk
     temp_path = os.path.join(TEMP_PATH, unique_name)
     total_bytes = 0
     try:
@@ -141,8 +168,9 @@ async def upload_file(
                 if not chunk:
                     break
                 total_bytes += len(chunk)
+
+                # 1) Server max upload check
                 if total_bytes > MAX_UPLOAD_SIZE:
-                    # Clean up and reject
                     await f.close()
                     if os.path.exists(temp_path):
                         os.remove(temp_path)
@@ -150,6 +178,19 @@ async def upload_file(
                         status_code=413,
                         detail=f"File too large. Maximum upload size is {MAX_UPLOAD_SIZE // (1024**3)} GB",
                     )
+
+                # 2) Strict User Quota check per chunk (mid-stream guard)
+                if quota > 0 and (current_usage + total_bytes) > quota:
+                    await f.close()
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    used_gb = current_usage / (1024 ** 3)
+                    quota_gb = quota / (1024 ** 3)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Upload aborted: Storage quota exceeded during upload. Using {used_gb:.2f} GB of {quota_gb:.2f} GB.",
+                    )
+
                 await f.write(chunk)
     except HTTPException:
         raise

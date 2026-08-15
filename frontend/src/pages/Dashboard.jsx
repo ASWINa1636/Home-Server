@@ -14,6 +14,10 @@ import UploadZone from '../components/UploadZone';
 import EmptyState from '../components/EmptyState';
 import { GridSkeleton, ListSkeleton } from '../components/Skeleton';
 import FileViewer from '../components/FileViewer';
+import ContactAdminModal from '../components/ContactAdminModal';
+import DeletionRequestModal from '../components/DeletionRequestModal';
+import StorageRequestModal from '../components/StorageRequestModal';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 import { getViewType, cleanName } from '../utils/fileUtils';
 
 import {
@@ -37,6 +41,10 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
+  const [showContactAdmin, setShowContactAdmin] = useState(false);
+  const [showDeletionRequest, setShowDeletionRequest] = useState(false);
+  const [showStorageRequest, setShowStorageRequest] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const { addToast } = useToast();
 
   // ---------------------------------------------------------------------------
@@ -304,6 +312,26 @@ export default function Dashboard() {
   const handleUpload = async (selectedFiles) => {
     if (selectedFiles.length === 0) return;
 
+    // --- Client-side Quota Pre-Check ---
+    try {
+      const infoRes = await api.get('/api/user/storage-info');
+      const { used, quota } = infoRes.data;
+      if (quota > 0) {
+        const remaining = Math.max(0, quota - used);
+        const totalUploadSize = selectedFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+        if (totalUploadSize > remaining) {
+          const reqGB = (totalUploadSize / (1024 ** 3)).toFixed(2);
+          const remGB = (remaining / (1024 ** 3)).toFixed(2);
+          addToast(
+            `Upload blocked: Selected files (${reqGB} GB) exceed your remaining storage quota (${remGB} GB). Please request more storage.`,
+            'error'
+          );
+          setShowStorageRequest(true);
+          return;
+        }
+      }
+    } catch {}
+
     setUploading(true);
     const queue = selectedFiles.map(f => ({
       name: f.name,
@@ -345,7 +373,9 @@ export default function Dashboard() {
         setUploadQueue(prev => prev.map((item, idx) =>
           idx === i ? { ...item, status: 'done', progress: 100 } : item
         ));
-      } catch {
+      } catch (err) {
+        const detailMsg = err.response?.data?.detail || 'Upload failed';
+        addToast(detailMsg, 'error');
         setUploadQueue(prev => prev.map((item, idx) =>
           idx === i ? { ...item, status: 'error' } : item
         ));
@@ -396,6 +426,10 @@ export default function Dashboard() {
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         fileStats={fileStats}
+        onRequestStorage={() => setShowStorageRequest(true)}
+        onContactAdmin={() => setShowContactAdmin(true)}
+        onRequestDeletion={() => setShowDeletionRequest(true)}
+        onChangePassword={() => setShowChangePassword(true)}
       />
 
       {/* Main content area */}
@@ -590,6 +624,30 @@ export default function Dashboard() {
           onClose={() => setViewFile(null)}
         />
       )}
+
+      {/* Storage Request Modal */}
+      <StorageRequestModal
+        isOpen={showStorageRequest}
+        onClose={() => setShowStorageRequest(false)}
+      />
+
+      {/* Support Chat Modal */}
+      <ContactAdminModal
+        isOpen={showContactAdmin}
+        onClose={() => setShowContactAdmin(false)}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
+
+      {/* Account Deletion Request Modal */}
+      <DeletionRequestModal
+        isOpen={showDeletionRequest}
+        onClose={() => setShowDeletionRequest(false)}
+      />
     </div>
   );
 }
