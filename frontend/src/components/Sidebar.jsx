@@ -26,9 +26,38 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
   const [storageInfo, setStorageInfo] = useState(null);
 
   useEffect(() => {
-    api.get('/api/user/storage-info')
-      .then(res => setStorageInfo(res.data))
-      .catch(() => {});
+    let timeoutId;
+    let isSubscribed = true;
+
+    const fetchSync = () => {
+      api.get('/api/user/sync')
+        .then(res => {
+          if (isSubscribed) {
+            setStorageInfo(res.data.storage);
+            // Optionally dispatch unread message events if needed, handled globally
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isSubscribed) {
+            timeoutId = setTimeout(fetchSync, 5000);
+          }
+        });
+    };
+
+    fetchSync();
+
+    const handleFocus = () => {
+      clearTimeout(timeoutId);
+      fetchSync();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isSubscribed = false;
+      clearTimeout(timeoutId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [fileStats]);
 
   const used = storageInfo?.used || fileStats?.totalSize || 0;

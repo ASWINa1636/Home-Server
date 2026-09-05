@@ -17,7 +17,7 @@ import {
   Play, Pause, Volume2, VolumeX, Volume1,
   Maximize, Minimize, PictureInPicture2, X,
   ZoomIn, ZoomOut, RotateCcw, Wand2, Settings,
-  SkipBack, SkipForward
+  SkipBack, SkipForward, MessageSquare, Subtitles, Headphones, Upload
 } from 'lucide-react';
 import './VideoPlayer.css';
 
@@ -32,12 +32,13 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function VideoPlayer({ src, title, onClose }) {
+export default function VideoPlayer({ src, title, subtitles: initialSubtitles = [], embeddedAudio = [], onClose }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const progressRef = useRef(null);
   const hideTimerRef = useRef(null);
   const kenBurnsRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Player state
   const [playing, setPlaying] = useState(false);
@@ -65,6 +66,21 @@ export default function VideoPlayer({ src, title, onClose }) {
   const [kenBurnsActive, setKenBurnsActive] = useState(false);
   const kenBurnsPhaseRef = useRef(0);
 
+  // Audio/Subtitle state
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [audioTracks, setAudioTracks] = useState([]);
+  const [activeAudioTrack, setActiveAudioTrack] = useState('');
+  const [activeSubtitle, setActiveSubtitle] = useState('off'); // 'off' or id
+  const [localSubtitles, setLocalSubtitles] = useState([]);
+
+  const allSubtitles = [...initialSubtitles, ...localSubtitles];
+
+  // Debugging props
+  useEffect(() => {
+    console.log("[VideoPlayer] allSubtitles updated:", allSubtitles);
+  }, [allSubtitles]);
+
   // ---------------------------------------------------------------------------
   // Controls visibility (auto-hide after 3s)
   // ---------------------------------------------------------------------------
@@ -75,6 +91,8 @@ export default function VideoPlayer({ src, title, onClose }) {
       hideTimerRef.current = setTimeout(() => {
         setShowControls(false);
         setShowSpeedMenu(false);
+        setShowSubtitleMenu(false);
+        setShowAudioMenu(false);
       }, 3000);
     }
   }, [playing]);
@@ -118,12 +136,54 @@ export default function VideoPlayer({ src, title, onClose }) {
       setMuted(video.muted);
     };
 
+    // Subtitles setup
+    const onLoadedMetadata = () => {
+      // Audio Tracks (Only works in Safari / supported browsers)
+      if (video.audioTracks && video.audioTracks.length > 0) {
+        const aTracks = [];
+        for (let i = 0; i < video.audioTracks.length; i++) {
+          const track = video.audioTracks[i];
+          aTracks.push({
+            id: track.id || i.toString(),
+            label: track.label || track.language || `Track ${i + 1}`,
+            enabled: track.enabled
+          });
+          if (track.enabled) setActiveAudioTrack(track.id || i.toString());
+        }
+        setAudioTracks(aTracks);
+      }
+
+      // Hide native subtitle tracks but keep them "hidden" so we can access cues,
+      // or set to "showing" to rely on native rendering. We rely on native rendering for cinematic quality.
+      if (video.textTracks) {
+        let hasActive = false;
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const t = video.textTracks[i];
+          // By default, turn all off to avoid double subtitles
+          if (t.mode === 'showing') {
+            hasActive = true;
+            setActiveSubtitle(t.id || i.toString());
+          }
+        }
+        // Auto-enable first track if we have subtitles and none is active
+        if (!hasActive && allSubtitles.length > 0) {
+          setActiveSubtitle(allSubtitles[0].id);
+          for (let i = 0; i < video.textTracks.length; i++) {
+             if (video.textTracks[i].id === allSubtitles[0].id || i === 0) {
+               video.textTracks[i].mode = 'showing';
+             }
+          }
+        }
+      }
+    };
+
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('durationchange', onDurationChange);
     video.addEventListener('progress', onProgress);
     video.addEventListener('volumechange', onVolumeChange);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
 
     return () => {
       video.removeEventListener('play', onPlay);
@@ -132,8 +192,9 @@ export default function VideoPlayer({ src, title, onClose }) {
       video.removeEventListener('durationchange', onDurationChange);
       video.removeEventListener('progress', onProgress);
       video.removeEventListener('volumechange', onVolumeChange);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
-  }, []);
+  }, [allSubtitles]);
 
   // ---------------------------------------------------------------------------
   // Player controls
@@ -207,6 +268,60 @@ export default function VideoPlayer({ src, title, onClose }) {
       console.warn('PiP not supported:', e);
     }
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Subtitle & Audio Actions
+  // ---------------------------------------------------------------------------
+  const changeAudioTrack = useCallback((trackId) => {
+    const video = videoRef.current;
+    if (video && video.audioTracks) {
+      for (let i = 0; i < video.audioTracks.length; i++) {
+        const track = video.audioTracks[i];
+        const id = track.id || i.toString();
+        track.enabled = (id === trackId);
+      }
+      setActiveAudioTrack(trackId);
+    }
+  }, []);
+
+  const changeSubtitle = useCallback((trackId) => {
+    const video = videoRef.current;
+    if (video && video.textTracks) {
+      for (let i = 0; i < video.textTracks.length; i++) {
+        const track = video.textTracks[i];
+        const id = track.id || allSubtitles[i]?.id || i.toString();
+        if (id === trackId) {
+          track.mode = 'showing';
+        } else {
+          track.mode = 'hidden';
+        }
+      }
+      setActiveSubtitle(trackId);
+    }
+  }, [allSubtitles]);
+
+  const handleLocalSubtitleUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Create a local blob URL for the uploaded .vtt file
+    const url = URL.createObjectURL(file);
+    const newSub = {
+      id: `local-${Date.now()}`,
+      label: file.name,
+      srcLang: 'en',
+      url: url
+    };
+    
+    setLocalSubtitles(prev => [...prev, newSub]);
+    
+    // Auto-select the newly uploaded subtitle after a short delay to allow DOM to render <track>
+    setTimeout(() => {
+      changeSubtitle(newSub.id);
+    }, 100);
+    
+    setShowSubtitleMenu(false);
+  };
 
   // ---------------------------------------------------------------------------
   // Fullscreen change listener
@@ -495,7 +610,7 @@ export default function VideoPlayer({ src, title, onClose }) {
       onTouchEnd={handleTouchEnd}
       onClick={(e) => {
         // Only toggle play when clicking on the video area (not controls)
-        if (!e.target.closest('.vp-controls') && !e.target.closest('.vp-center-btn') && !isPanning && !e.target.closest('.vp-speed-menu')) {
+        if (!e.target.closest('.vp-controls') && !e.target.closest('.vp-center-btn') && !isPanning && !e.target.closest('.vp-speed-menu') && !e.target.closest('.vp-settings-menu')) {
           togglePlay();
         }
         showControlsTemporarily();
@@ -506,6 +621,7 @@ export default function VideoPlayer({ src, title, onClose }) {
         ref={videoRef}
         src={src}
         className="vp-video"
+        crossOrigin="anonymous"
         style={{
           transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
           cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
@@ -514,7 +630,19 @@ export default function VideoPlayer({ src, title, onClose }) {
         autoPlay
         playsInline
         onClick={(e) => e.stopPropagation()}
-      />
+      >
+        {allSubtitles.map((sub, i) => (
+          <track
+            key={sub.id}
+            id={sub.id}
+            kind="subtitles"
+            label={sub.label}
+            srcLang={sub.srcLang}
+            src={sub.url}
+            default={i === 0 && activeSubtitle === sub.id}
+          />
+        ))}
+      </video>
 
       {/* Center play/pause icon */}
       {showCenterIcon && (
@@ -634,8 +762,13 @@ export default function VideoPlayer({ src, title, onClose }) {
             {/* Speed selector */}
             <div className="vp-speed-wrapper" style={{ position: 'relative' }}>
               <button
-                className="vp-ctrl-btn vp-speed-btn"
-                onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); }}
+                className={`vp-ctrl-btn vp-speed-btn ${showSpeedMenu ? 'vp-ctrl-active' : ''}`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setShowSpeedMenu(!showSpeedMenu); 
+                  setShowSubtitleMenu(false);
+                  setShowAudioMenu(false);
+                }}
                 title="Playback speed"
               >
                 {playbackSpeed}x
@@ -651,6 +784,112 @@ export default function VideoPlayer({ src, title, onClose }) {
                       {speed}x
                     </button>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Audio Menu (Always Visible) */}
+            <div className="vp-settings-wrapper" style={{ position: 'relative' }}>
+              <button
+                className={`vp-ctrl-btn ${showAudioMenu ? 'vp-ctrl-active' : ''}`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setShowAudioMenu(!showAudioMenu); 
+                  setShowSubtitleMenu(false);
+                  setShowSpeedMenu(false);
+                }}
+                title="Audio Tracks"
+              >
+                <Headphones size={18} />
+              </button>
+              {showAudioMenu && (
+                <div className="vp-settings-menu" onClick={(e) => e.stopPropagation()}>
+                  <div className="vp-settings-section">
+                    <div className="vp-settings-title">Audio</div>
+                    {audioTracks.length > 1 ? (
+                      audioTracks.map((track) => (
+                        <button
+                          key={track.id}
+                          className={`vp-settings-option ${activeAudioTrack === track.id ? 'vp-settings-active' : ''}`}
+                          onClick={() => changeAudioTrack(track.id)}
+                        >
+                          {track.label}
+                        </button>
+                      ))
+                    ) : embeddedAudio.length > 1 ? (
+                      embeddedAudio.map((track) => (
+                        <button
+                          key={track.index}
+                          className="vp-settings-option"
+                          onClick={() => alert("Standard Chrome cannot natively switch embedded MKV/MP4 audio tracks during direct streaming. Please use Safari or convert the file to switch tracks.")}
+                        >
+                          {track.title}
+                        </button>
+                      ))
+                    ) : (
+                      <div style={{ padding: '8px 12px', color: '#94a3b8', fontSize: '12px', maxWidth: '200px', whiteSpace: 'normal', lineHeight: 1.4 }}>
+                        Default (Browser Audio)
+                        <div style={{ marginTop: '4px', fontSize: '11px', opacity: 0.7 }}>
+                          Chrome does not support native track switching for this file type.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Subtitles (CC) Menu (Always Visible) */}
+            <div className="vp-settings-wrapper" style={{ position: 'relative' }}>
+              <button
+                className={`vp-ctrl-btn ${showSubtitleMenu ? 'vp-ctrl-active' : ''}`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setShowSubtitleMenu(!showSubtitleMenu); 
+                  setShowAudioMenu(false);
+                  setShowSpeedMenu(false);
+                }}
+                title="Subtitles / Captions"
+              >
+                <Subtitles size={18} />
+              </button>
+              {showSubtitleMenu && (
+                <div className="vp-settings-menu" onClick={(e) => e.stopPropagation()}>
+                  <div className="vp-settings-section">
+                    <div className="vp-settings-title">Subtitles</div>
+                    <button
+                      className={`vp-settings-option ${activeSubtitle === 'off' ? 'vp-settings-active' : ''}`}
+                      onClick={() => changeSubtitle('off')}
+                    >
+                      Off
+                    </button>
+                    {allSubtitles.map((sub) => (
+                      <button
+                        key={sub.id}
+                        className={`vp-settings-option ${activeSubtitle === sub.id ? 'vp-settings-active' : ''}`}
+                        onClick={() => changeSubtitle(sub.id)}
+                        title={sub.label}
+                      >
+                        {sub.label.length > 20 ? sub.label.substring(0, 20) + '...' : sub.label}
+                      </button>
+                    ))}
+                    <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+                    <button
+                      className="vp-settings-option"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ color: '#38bdf8' }}
+                    >
+                      <Upload size={14} style={{ marginRight: 6 }} />
+                      Load local subtitle
+                    </button>
+                    <input
+                      type="file"
+                      accept=".vtt"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={handleLocalSubtitleUpload}
+                    />
+                  </div>
                 </div>
               )}
             </div>

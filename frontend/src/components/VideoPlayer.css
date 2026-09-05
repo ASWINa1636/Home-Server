@@ -399,6 +399,77 @@
   background: rgba(124, 58, 237, 0.1);
 }
 
+/* --------------- Settings Menu (Subtitles & Audio) --------------- */
+.vp-settings-menu {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background: rgba(16, 16, 28, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  gap: 24px;
+  min-width: 200px;
+  animation: fadeInUp 0.15s ease;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.vp-settings-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+
+.vp-settings-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  opacity: 0.9;
+}
+
+.vp-settings-option {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.vp-settings-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.vp-settings-active {
+  color: #7c3aed !important;
+  font-weight: 600;
+  background: rgba(124, 58, 237, 0.1);
+}
+
+/* --------------- Native WebVTT Subtitle Styling (::cue) --------------- */
+::cue {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 24px;
+  line-height: 1.4;
+  text-shadow: 0px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
 /* --------------- Responsive --------------- */
 @media (max-width: 768px) {
   .vp-controls {

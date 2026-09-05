@@ -2,7 +2,8 @@
  * Dashboard.jsx — Main file management dashboard.
  * Integrates Sidebar, FileGrid/FileList, UploadZone, search, sort, filter.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import api from '../api';
@@ -307,8 +308,20 @@ export default function Dashboard() {
   };
 
   // ---------------------------------------------------------------------------
-  // Upload handler
+  // Upload handler with Concurrency, Cancellation, and Speed calc
   // ---------------------------------------------------------------------------
+  const abortControllersRef = useRef({});
+
+  const handleCancelUpload = (id) => {
+    if (abortControllersRef.current[id]) {
+      abortControllersRef.current[id].abort();
+    }
+  };
+
+  const handleCancelAllUploads = () => {
+    Object.values(abortControllersRef.current).forEach(ctrl => ctrl.abort());
+  };
+
   const handleUpload = async (selectedFiles) => {
     if (selectedFiles.length === 0) return;
 
@@ -333,61 +346,128 @@ export default function Dashboard() {
     } catch {}
 
     setUploading(true);
-    const queue = selectedFiles.map(f => ({
+    const queue = selectedFiles.map((f, idx) => ({
+      id: `upload-${Date.now()}-${idx}`,
       name: f.name,
       size: f.size,
       status: 'pending',
       progress: 0,
+      speed: 0,
+      file: f,
     }));
     setUploadQueue(queue);
 
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      setUploadQueue(prev => prev.map((item, idx) =>
-        idx === i ? { ...item, status: 'uploading' } : item
-      ));
+    // Concurrency pool setup
+    const CONCURRENCY_LIMIT = 3;
+    let activeUploads = 0;
+    let queueIndex = 0;
 
-      const form = new FormData();
-      form.append('file', file);
+    await new Promise((resolve) => {
+      const next = async () => {
+        if (queueIndex >= queue.length && activeUploads === 0) {
+          resolve();
+          return;
+        }
 
-      // Determine folder
-      let folder = currentPath;
-      const relativePath = file.webkitRelativePath || '';
-      if (relativePath.includes('/')) {
-        const parts = relativePath.split('/');
-        parts.pop();
-        const subPath = parts.join('/');
-        folder = currentPath === '/' ? '/' + subPath : currentPath + '/' + subPath;
-      }
-      form.append('folder', folder);
+        while (activeUploads < CONCURRENCY_LIMIT && queueIndex < queue.length) {
+          const currentIndex = queueIndex;
+          const item = queue[currentIndex];
+          queueIndex++;
+          activeUploads++;
 
-      try {
-        await api.post('/api/files/upload', form, {
-          onUploadProgress: (p) => {
-            const progress = Math.round((p.loaded / p.total) * 100);
-            setUploadQueue(prev => prev.map((item, idx) =>
-              idx === i ? { ...item, progress } : item
-            ));
-          },
-        });
-        setUploadQueue(prev => prev.map((item, idx) =>
-          idx === i ? { ...item, status: 'done', progress: 100 } : item
-        ));
-      } catch (err) {
-        const detailMsg = err.response?.data?.detail || 'Upload failed';
-        addToast(detailMsg, 'error');
-        setUploadQueue(prev => prev.map((item, idx) =>
-          idx === i ? { ...item, status: 'error' } : item
-        ));
-      }
-    }
+          uploadSingleFile(item, currentIndex).finally(() => {
+            activeUploads--;
+            next();
+          });
+        }
+      };
+
+      next();
+    });
 
     setUploading(false);
-    addToast(`Uploaded ${selectedFiles.length} file(s)`, 'success');
-    loadFiles();
+    
+    setUploadQueue(currentQueue => {
+      const successCount = currentQueue.filter(q => q.status === 'done').length;
+      if (successCount > 0) {
+        addToast(`Uploaded ${successCount} file(s)`, 'success');
+        loadFiles();
+      }
+      return currentQueue;
+    });
 
-    // Clear queue after 3 seconds
-    setTimeout(() => setUploadQueue([]), 3000);
+    // Clear queue after 3 seconds, but only keep active/cancelled items if needed
+    setTimeout(() => {
+      setUploadQueue(prev => {
+        const isActive = prev.some(q => q.status === 'uploading' || q.status === 'pending');
+        return isActive ? prev : [];
+      });
+    }, 3000);
+  };
+
+  const uploadSingleFile = async (item, idx) => {
+    setUploadQueue(prev => prev.map((q, i) => i === idx ? { ...q, status: 'uploading' } : q));
+
+    let folder = currentPath;
+    const relativePath = item.file.webkitRelativePath || '';
+    if (relativePath.includes('/')) {
+      const parts = relativePath.split('/');
+      parts.pop();
+      const subPath = parts.join('/');
+      folder = currentPath === '/' ? '/' + subPath : currentPath + '/' + subPath;
+    }
+
+    const controller = new AbortController();
+    abortControllersRef.current[item.id] = controller;
+
+    let lastLoaded = 0;
+    let lastTime = Date.now();
+    let currentSpeed = 0;
+
+    try {
+      await api.post('/api/files/upload-direct', item.file, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(item.file.name),
+          'X-Folder': encodeURIComponent(folder)
+        },
+        signal: controller.signal,
+        onUploadProgress: (p) => {
+          const now = Date.now();
+          const timeDiff = (now - lastTime) / 1000;
+
+          if (timeDiff > 0.3 || p.loaded === p.total) { 
+            const bytesDiff = p.loaded - lastLoaded;
+            const instantSpeed = bytesDiff / timeDiff;
+            currentSpeed = currentSpeed ? (currentSpeed * 0.7 + instantSpeed * 0.3) : instantSpeed;
+            lastLoaded = p.loaded;
+            lastTime = now;
+          }
+
+          const progress = Math.round((p.loaded / p.total) * 100);
+          setUploadQueue(prev => prev.map((q, i) =>
+            i === idx ? { ...q, progress, speed: currentSpeed } : q
+          ));
+        },
+      });
+      setUploadQueue(prev => prev.map((q, i) =>
+        i === idx ? { ...q, status: 'done', progress: 100 } : q
+      ));
+    } catch (err) {
+      if (axios.isCancel(err) || err.message === 'canceled') {
+        setUploadQueue(prev => prev.map((q, i) =>
+          i === idx ? { ...q, status: 'cancelled' } : q
+        ));
+      } else {
+        const detailMsg = err.response?.data?.detail || 'Upload failed';
+        addToast(`${item.name}: ${detailMsg}`, 'error');
+        setUploadQueue(prev => prev.map((q, i) =>
+          i === idx ? { ...q, status: 'error' } : q
+        ));
+      }
+    } finally {
+      delete abortControllersRef.current[item.id];
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -499,6 +579,8 @@ export default function Dashboard() {
               uploading={uploading}
               uploadQueue={uploadQueue}
               currentPath={currentPath}
+              onCancelUpload={handleCancelUpload}
+              onCancelAllUploads={handleCancelAllUploads}
             />
             <button
               id="new-folder-btn"
@@ -621,6 +703,7 @@ export default function Dashboard() {
       {viewFile && (
         <FileViewer
           file={viewFile}
+          allFiles={allFiles}
           onClose={() => setViewFile(null)}
         />
       )}

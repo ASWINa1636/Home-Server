@@ -8,8 +8,9 @@ import { getViewType, cleanName, getFileIcon } from '../utils/fileUtils';
 import VideoPlayer from './VideoPlayer';
 import api from '../api';
 
-export default function FileViewer({ file, onClose }) {
+export default function FileViewer({ file, allFiles = [], onClose }) {
   const [codeContent, setCodeContent] = useState('');
+  const [videoMetadata, setVideoMetadata] = useState({ subtitles: [], audio: [] });
   const viewType = getViewType(cleanName(file.name));
   const token = localStorage.getItem('token');
   const viewUrl = `${window.location.origin}/api/files/view/${file.id}?token=${token}`;
@@ -19,6 +20,14 @@ export default function FileViewer({ file, onClose }) {
       api.get(`/api/files/view/${file.id}?token=${token}`, { responseType: 'text' })
         .then(res => setCodeContent(typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2)))
         .catch(() => setCodeContent('Unable to load file contents'));
+    } else if (viewType === 'video') {
+      console.log(`[FileViewer] Fetching metadata for video ID: ${file.id}`);
+      api.get(`/api/files/metadata/${file.id}`)
+        .then(res => {
+          console.log(`[FileViewer] Received metadata:`, res.data);
+          setVideoMetadata(res.data);
+        })
+        .catch((err) => console.error("[FileViewer] Failed to load video metadata", err));
     }
   }, [file.id, viewType, token]);
 
@@ -33,10 +42,48 @@ export default function FileViewer({ file, onClose }) {
 
   // For video files, render the custom player
   if (viewType === 'video') {
+    // Find related subtitle files
+    const baseName = cleanName(file.name).split('.').slice(0, -1).join('.');
+    const localSubtitles = allFiles
+      .filter(f => f.folder === file.folder && cleanName(f.name).endsWith('.vtt'))
+      // Only include subtitles that loosely match the video name
+      .filter(f => cleanName(f.name).startsWith(baseName) || cleanName(f.name).includes(baseName))
+      .map((f, i) => {
+        // Extract language or label from filename (e.g. video.en.vtt -> 'en')
+        let label = 'Local Subtitle ' + (i + 1);
+        const parts = cleanName(f.name).replace('.vtt', '').split('.');
+        if (parts.length > 1) {
+          const lang = parts[parts.length - 1];
+          // Simple heuristic for labels
+          if (lang.length <= 3) label = lang.toUpperCase();
+          else label = lang.charAt(0).toUpperCase() + lang.slice(1);
+        }
+        return {
+          id: f.id.toString(),
+          label,
+          srcLang: label.toLowerCase(),
+          url: `${window.location.origin}/api/files/download/${f.id}?token=${token}`
+        };
+      });
+
+    const embeddedSubtitles = (videoMetadata.subtitles || []).map(sub => ({
+      id: `embedded-${sub.index}`,
+      label: `${sub.title} (Embedded)`,
+      srcLang: sub.language || 'en',
+      url: `${window.location.origin}/api/files/subtitle/${file.id}/${sub.index}.vtt?token=${token}`
+    }));
+
+    const subtitles = [...localSubtitles, ...embeddedSubtitles];
+    
+    console.log("[FileViewer] Passing subtitles to VideoPlayer:", subtitles);
+    console.log("[FileViewer] Passing embeddedAudio to VideoPlayer:", videoMetadata.audio);
+
     return (
       <VideoPlayer
         src={viewUrl}
         title={cleanName(file.name)}
+        subtitles={subtitles}
+        embeddedAudio={videoMetadata.audio || []}
         onClose={onClose}
       />
     );

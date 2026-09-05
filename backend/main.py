@@ -424,6 +424,69 @@ def get_storage_info(
     }
 
 
+@app.get("/api/user/sync")
+def sync_user_state(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fast lightweight polling endpoint for real-time dashboard updates."""
+    from models import StorageRequest, Message, DeletionRequest
+    
+    used = (
+        db.query(sql_func.coalesce(sql_func.sum(FileRecord.size), 0))
+        .filter(FileRecord.owner_id == user.id)
+        .scalar()
+    )
+    quota = user.storage_quota
+    file_count = db.query(FileRecord).filter(FileRecord.owner_id == user.id).count()
+    
+    # Storage request
+    storage_request = (
+        db.query(StorageRequest)
+        .filter(StorageRequest.user_id == user.id)
+        .order_by(StorageRequest.created_at.desc())
+        .first()
+    )
+    
+    # Deletion request
+    deletion_request = (
+        db.query(DeletionRequest)
+        .filter(DeletionRequest.user_id == user.id)
+        .order_by(DeletionRequest.created_at.desc())
+        .first()
+    )
+    
+    # Unread messages from admin
+    unread_messages = (
+        db.query(Message)
+        .filter(Message.user_id == user.id, Message.sender_id != user.id, Message.is_read == False)
+        .count()
+    )
+
+    return {
+        "storage": {
+            "used": used,
+            "quota": quota,
+            "percentage": round((used / quota) * 100, 1) if quota > 0 else 0,
+            "file_count": file_count,
+        },
+        "user_status": {
+            "is_active": user.is_active,
+            "is_admin": user.is_admin,
+        },
+        "storage_request": {
+            "id": storage_request.id,
+            "status": storage_request.status,
+            "admin_response": storage_request.admin_response,
+        } if storage_request else None,
+        "deletion_request": {
+            "id": deletion_request.id,
+            "status": deletion_request.status,
+        } if deletion_request else None,
+        "unread_messages_count": unread_messages,
+    }
+
+
 @app.post("/api/user/storage-request")
 @limiter.limit("3/hour")
 def create_storage_request(

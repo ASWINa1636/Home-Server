@@ -21,10 +21,11 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid — auto-logout
+    if (error.response?.status === 401 || (error.response?.status === 403 && error.response?.data?.detail === "Account has been disabled")) {
+      // Token expired, invalid, or account disabled — auto-logout
       localStorage.removeItem('token');
       localStorage.removeItem('username');
+      localStorage.removeItem('isAdmin');
       // Redirect to login if not already there
       if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
         window.location.href = '/login';

@@ -3,9 +3,9 @@
  * Supports drag-and-drop overlay, file queue with individual progress bars.
  */
 import { useState, useRef, useCallback } from 'react';
-import { Upload, X, CheckCircle, AlertCircle, File as FileIcon } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, File as FileIcon, XCircle } from 'lucide-react';
 
-export default function UploadZone({ onUpload, uploading, uploadQueue, currentPath }) {
+export default function UploadZone({ onUpload, uploading, uploadQueue, currentPath, onCancelUpload, onCancelAllUploads }) {
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
   const fileInput = useRef();
@@ -52,6 +52,15 @@ export default function UploadZone({ onUpload, uploading, uploadQueue, currentPa
     if (bytes < 1024 ** 3) return (bytes / (1024 ** 2)).toFixed(1) + ' MB';
     return (bytes / (1024 ** 3)).toFixed(2) + ' GB';
   };
+
+  const formatSpeed = (bytesPerSec) => {
+    if (!bytesPerSec) return '';
+    if (bytesPerSec < 1024) return bytesPerSec.toFixed(0) + ' B/s';
+    if (bytesPerSec < 1024 ** 2) return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+    return (bytesPerSec / (1024 ** 2)).toFixed(1) + ' MB/s';
+  };
+
+  const hasActiveUploads = uploadQueue && uploadQueue.some(f => f.status === 'uploading' || f.status === 'pending');
 
   return (
     <div
@@ -122,29 +131,57 @@ export default function UploadZone({ onUpload, uploading, uploadQueue, currentPa
       {/* Upload progress queue */}
       {uploadQueue && uploadQueue.length > 0 && (
         <div style={styles.queue}>
-          <div style={styles.queueHeader}>
+          <div style={{ ...styles.queueHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={styles.queueTitle}>
               Uploading {uploadQueue.filter(f => f.status === 'uploading').length > 0
                 ? `${uploadQueue.filter(f => f.status === 'done').length}/${uploadQueue.length}`
                 : `${uploadQueue.length} files`}
             </span>
+            {hasActiveUploads && onCancelAllUploads && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); onCancelAllUploads(); }}
+                style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <XCircle size={14} /> Cancel All
+              </button>
+            )}
           </div>
           <div style={styles.queueList}>
             {uploadQueue.map((item, i) => (
               <div key={i} style={styles.queueItem}>
                 <div style={styles.queueItemInfo}>
-                  {item.status === 'done' ? (
-                    <CheckCircle size={16} style={{ color: '#10b981', flexShrink: 0 }} />
-                  ) : item.status === 'error' ? (
-                    <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                  ) : (
-                    <div style={styles.miniSpinner} />
-                  )}
-                  <span style={styles.queueFileName}>{item.name}</span>
-                  <span style={styles.queueFileSize}>{formatSize(item.size)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                    {item.status === 'done' ? (
+                      <CheckCircle size={16} style={{ color: '#10b981', flexShrink: 0 }} />
+                    ) : item.status === 'error' ? (
+                      <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+                    ) : item.status === 'cancelled' ? (
+                      <XCircle size={16} style={{ color: '#6b7280', flexShrink: 0 }} />
+                    ) : (
+                      <div style={styles.miniSpinner} />
+                    )}
+                    <span style={{ ...styles.queueFileName, color: item.status === 'cancelled' ? '#6b7280' : '#e2e8f0', textDecoration: item.status === 'cancelled' ? 'line-through' : 'none' }}>
+                      {item.name}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                    <span style={styles.queueFileSize}>
+                      {item.status === 'uploading' && item.speed ? `${formatSpeed(item.speed)} • ` : ''}
+                      {item.status === 'cancelled' ? 'Cancelled' : formatSize(item.size)}
+                    </span>
+                    {(item.status === 'uploading' || item.status === 'pending') && onCancelUpload && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onCancelUpload(item.id); }}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                        title="Cancel Upload"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {item.status === 'uploading' && (
-                  <div style={styles.progressBar}>
+                  <div style={{ ...styles.progressBar, marginTop: '8px' }}>
                     <div style={{
                       ...styles.progressFill,
                       width: `${item.progress || 0}%`,
