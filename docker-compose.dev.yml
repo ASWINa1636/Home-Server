@@ -1,7 +1,9 @@
 services:
 
   backend:
-    image: ghcr.io/aswina1636/home-server-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
 
     container_name: homeserver-backend
 
@@ -24,7 +26,9 @@ services:
 
 
   frontend:
-    image: ghcr.io/aswina1636/home-server-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
 
     container_name: homeserver-frontend
 
