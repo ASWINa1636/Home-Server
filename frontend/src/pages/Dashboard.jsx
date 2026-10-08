@@ -513,20 +513,21 @@ export default function Dashboard() {
       />
 
       {/* Main content area */}
-      <main style={styles.main}>
+      <main style={styles.main} className="dashboard-main">
         {/* Top bar */}
-        <header style={styles.topBar}>
+        <header style={styles.topBar} className="dashboard-topbar">
           <div style={styles.topBarLeft}>
             <button
-              className="btn btn-ghost btn-icon"
+              className="btn btn-ghost btn-icon mobile-menu-btn"
               style={styles.menuBtn}
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Open menu"
             >
               <Menu size={20} />
             </button>
 
             {/* Breadcrumbs */}
-            <nav style={styles.breadcrumbs}>
+            <nav style={styles.breadcrumbs} className="breadcrumbs">
               {breadcrumbs.map((crumb, i, arr) => (
                 <span key={crumb.path} style={styles.breadcrumbItem}>
                   <span
@@ -549,7 +550,7 @@ export default function Dashboard() {
           </div>
 
           {/* Search */}
-          <div style={styles.searchWrapper}>
+          <div style={styles.searchWrapper} className="dashboard-search">
             <Search size={16} style={{ color: '#475569', flexShrink: 0 }} />
             <input
               id="search-input"
@@ -572,8 +573,8 @@ export default function Dashboard() {
         </header>
 
         {/* Toolbar */}
-        <div style={styles.toolbar}>
-          <div style={styles.toolbarLeft}>
+        <div style={styles.toolbar} className="dashboard-toolbar">
+          <div style={styles.toolbarLeft} className="toolbar-left">
             <UploadZone
               onUpload={handleUpload}
               uploading={uploading}
@@ -650,7 +651,7 @@ export default function Dashboard() {
 
         {/* New folder input */}
         {showNewFolder && (
-          <div style={styles.newFolderRow}>
+          <div style={styles.newFolderRow} className="new-folder-row">
             <input
               className="input"
               placeholder="Folder name"
@@ -667,7 +668,7 @@ export default function Dashboard() {
 
         {/* Results summary when searching/filtering */}
         {(isSearching || isFiltered) && !loading && (
-          <div style={styles.resultsSummary}>
+          <div style={styles.resultsSummary} className="results-summary">
             Found {foldersAtPath.length} folder(s) and {filesAtPath.length} file(s)
             {isSearching && <span> for "{search}"</span>}
             <button
@@ -681,7 +682,7 @@ export default function Dashboard() {
         )}
 
         {/* Content area */}
-        <div style={styles.content}>
+        <div style={styles.content} className="dashboard-content">
           {loading ? (
             viewMode === 'grid' ? <GridSkeleton /> : <ListSkeleton />
           ) : hasFiles ? (
@@ -848,15 +849,4 @@ const styles = {
   },
 };
 
-// Add responsive CSS
-const responsiveStyle = document.createElement('style');
-responsiveStyle.textContent = `
-  @media (max-width: 768px) {
-    main {
-      margin-left: 0 !important;
-    }
-  }
-`;
-if (typeof document !== 'undefined') {
-  document.head.appendChild(responsiveStyle);
-}
+// Responsive styles are handled via CSS classes in index.css

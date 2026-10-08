@@ -62,7 +62,7 @@ export default function ResetPassword() {
         <div style={{ ...styles.orb, ...styles.orb2 }} />
       </div>
 
-      <div style={styles.card}>
+      <div style={styles.card} className="login-card">
         <div style={styles.branding}>
           <div style={styles.logoIcon}>
             <ShieldCheck size={28} strokeWidth={1.5} />

@@ -56,7 +56,7 @@ export default function FileGrid({
   };
 
   return (
-    <div style={styles.grid}>
+    <div style={styles.grid} className="file-grid">
       {/* Go back card */}
       {currentPath !== '/' && !search && (
         <div style={styles.folderCard} onClick={onGoBack}>

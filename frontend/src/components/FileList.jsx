@@ -32,7 +32,7 @@ export default function FileList({
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="file-list-table">
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerCheck}>

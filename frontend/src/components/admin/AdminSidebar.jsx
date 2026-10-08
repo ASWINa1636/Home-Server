@@ -1,10 +1,12 @@
 /**
  * AdminSidebar.jsx — Admin panel navigation sidebar.
+ * Desktop: always visible fixed sidebar.
+ * Mobile: off-canvas drawer with overlay, close button, and transition.
  */
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Smartphone, HardDrive, Inbox,
-  ScrollText, Settings, ArrowLeft, Shield, MessageSquare, UserX
+  ScrollText, Settings, ArrowLeft, Shield, MessageSquare, UserX, X
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -18,7 +20,7 @@ const NAV_ITEMS = [
   { id: 'settings', path: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function AdminSidebar({ pendingRequests = 0, unreadMessages = 0, pendingDeletions = 0 }) {
+export default function AdminSidebar({ pendingRequests = 0, unreadMessages = 0, pendingDeletions = 0, isOpen = false, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -27,65 +29,114 @@ export default function AdminSidebar({ pendingRequests = 0, unreadMessages = 0, 
     return location.pathname.startsWith(item.path);
   };
 
+  const handleNavClick = (path) => {
+    navigate(path);
+    // Close sidebar on mobile after navigation
+    if (window.innerWidth < 768 && onToggle) {
+      onToggle();
+    }
+  };
+
   return (
-    <aside style={styles.sidebar}>
-      {/* Logo */}
-      <div style={styles.logoArea}>
-        <div style={styles.logoIcon}>
-          <Shield size={22} strokeWidth={1.5} />
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          style={styles.overlay}
+          onClick={onToggle}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        style={{
+          ...styles.sidebar,
+          transform: isOpen ? 'translateX(0)' : undefined,
+        }}
+        className={isOpen ? 'admin-sidebar-open' : ''}
+      >
+        {/* Logo */}
+        <div style={styles.logoArea}>
+          <div style={styles.logoIcon}>
+            <Shield size={22} strokeWidth={1.5} />
+          </div>
+          <span style={styles.logoText}>Admin Panel</span>
+          <button
+            style={styles.closeBtn}
+            onClick={onToggle}
+            className="sidebar-close-btn"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
         </div>
-        <span style={styles.logoText}>Admin Panel</span>
-      </div>
 
-      {/* Navigation */}
-      <nav style={styles.nav}>
-        <div style={styles.navLabel}>Management</div>
-        {NAV_ITEMS.map(item => {
-          const Icon = item.icon;
-          const active = isActive(item);
+        {/* Navigation */}
+        <nav style={styles.nav}>
+          <div style={styles.navLabel}>Management</div>
+          {NAV_ITEMS.map(item => {
+            const Icon = item.icon;
+            const active = isActive(item);
 
-          let badgeCount = 0;
-          if (item.id === 'requests') badgeCount = pendingRequests;
-          if (item.id === 'messages') badgeCount = unreadMessages;
-          if (item.id === 'deletions') badgeCount = pendingDeletions;
+            let badgeCount = 0;
+            if (item.id === 'requests') badgeCount = pendingRequests;
+            if (item.id === 'messages') badgeCount = unreadMessages;
+            if (item.id === 'deletions') badgeCount = pendingDeletions;
 
-          return (
-            <button
-              key={item.id}
-              style={{
-                ...styles.navItem,
-                ...(active ? styles.navItemActive : {}),
-              }}
-              onClick={() => navigate(item.path)}
-            >
-              <Icon size={18} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {badgeCount > 0 && (
-                <span style={{
-                  ...styles.badge,
-                  background: item.id === 'messages' ? '#7c3aed' : item.id === 'deletions' ? '#ef4444' : '#f59e0b'
-                }}>
-                  {badgeCount}
-                </span>
-              )}
-              {active && <div style={styles.activeIndicator} />}
-            </button>
-          );
-        })}
-      </nav>
+            return (
+              <button
+                key={item.id}
+                style={{
+                  ...styles.navItem,
+                  ...(active ? styles.navItemActive : {}),
+                }}
+                onClick={() => handleNavClick(item.path)}
+              >
+                <Icon size={18} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {badgeCount > 0 && (
+                  <span style={{
+                    ...styles.badge,
+                    background: item.id === 'messages' ? '#7c3aed' : item.id === 'deletions' ? '#ef4444' : '#f59e0b'
+                  }}>
+                    {badgeCount}
+                  </span>
+                )}
+                {active && <div style={styles.activeIndicator} />}
+              </button>
+            );
+          })}
+        </nav>
 
-      {/* Back to dashboard */}
-      <div style={styles.backArea}>
-        <button style={styles.backBtn} onClick={() => navigate('/')}>
-          <ArrowLeft size={18} />
-          <span>Back to Dashboard</span>
-        </button>
-      </div>
-    </aside>
+        {/* Back to dashboard */}
+        <div style={styles.backArea}>
+          <button style={styles.backBtn} onClick={() => handleNavClick('/')}>
+            <ArrowLeft size={18} />
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
+      </aside>
+
+      <style>{`
+        @media (max-width: 768px) {
+          aside:not(.admin-sidebar-open) {
+            transform: translateX(-100%) !important;
+          }
+        }
+      `}</style>
+    </>
   );
 }
 
 const styles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+    zIndex: 99,
+  },
   sidebar: {
     position: 'fixed',
     top: 0,
@@ -99,6 +150,7 @@ const styles = {
     zIndex: 100,
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
+    transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   logoArea: {
     display: 'flex',
@@ -125,6 +177,18 @@ const styles = {
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
+    flex: 1,
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#94a3b8',
+    cursor: 'pointer',
+    padding: 4,
+    borderRadius: 6,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nav: {
     flex: 1,

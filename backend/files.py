@@ -27,7 +27,7 @@ from auth import get_current_user, SECRET_KEY, ALGORITHM
 
 load_dotenv()
 
-STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/uploads")
+STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/users")
 TEMP_PATH = os.getenv("TEMP_PATH", "/tmp/homeserver")
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024 * 1024)))  # 50 GB default
 
@@ -36,6 +36,18 @@ os.makedirs(TEMP_PATH, exist_ok=True)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
+
+# ---------------------------------------------------------------------------
+def get_user_storage_path(user_id: int) -> str:
+    """
+    Get the physical storage path for a user's files and ensure it exists.
+    """
+    if not isinstance(user_id, int) or user_id <= 0:
+        raise ValueError("Invalid user ID for storage path")
+    
+    path = os.path.join(STORAGE_PATH, str(user_id))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 # ---------------------------------------------------------------------------
 # Sanitization helpers
@@ -237,7 +249,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail="Upload failed")
 
     # Move from SSD temp to HDD storage securely and fast!
-    final_path = os.path.join(STORAGE_PATH, unique_name)
+    final_path = os.path.join(get_user_storage_path(user.id), unique_name)
     await fast_move_async(temp_path, final_path)
 
     size = os.path.getsize(final_path)
@@ -368,7 +380,7 @@ async def upload_file_direct(
         raise HTTPException(status_code=500, detail="Upload failed")
 
     # Move from SSD to HDD securely and fast!
-    final_path = os.path.join(STORAGE_PATH, unique_name)
+    final_path = os.path.join(get_user_storage_path(user.id), unique_name)
     await fast_move_async(temp_path, final_path)
 
     size = os.path.getsize(final_path)
@@ -442,7 +454,7 @@ def download_file(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    path = os.path.join(STORAGE_PATH, record.filename)
+    path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -489,7 +501,7 @@ def view_file_endpoint(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    path = os.path.join(STORAGE_PATH, record.filename)
+    path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -577,7 +589,7 @@ def download_multiple(
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for record in records:
-            path = os.path.join(STORAGE_PATH, record.filename)
+            path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
             if os.path.exists(path):
                 arcname = (
                     os.path.join(record.folder.lstrip("/"), record.original_name)
@@ -610,7 +622,7 @@ def delete_multiple(
         .all()
     )
     for record in records:
-        path = os.path.join(STORAGE_PATH, record.filename)
+        path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
         if os.path.exists(path):
             os.remove(path)
         db.delete(record)
@@ -633,7 +645,7 @@ def delete_file(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    path = os.path.join(STORAGE_PATH, record.filename)
+    path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
     if os.path.exists(path):
         os.remove(path)
     db.delete(record)
@@ -687,7 +699,7 @@ async def get_video_metadata(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    path = os.path.join(STORAGE_PATH, record.filename)
+    path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -797,7 +809,7 @@ async def extract_subtitle(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    path = os.path.join(STORAGE_PATH, record.filename)
+    path = os.path.join(get_user_storage_path(record.owner_id), record.filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
 

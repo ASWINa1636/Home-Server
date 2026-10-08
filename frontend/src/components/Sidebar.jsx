@@ -109,6 +109,7 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
             style={styles.closeBtn}
             onClick={onToggle}
             className="sidebar-close-btn"
+            aria-label="Close menu"
           >
             <X size={20} />
           </button>

@@ -796,7 +796,7 @@ def handle_deletion_request(
 ):
     """Approve or reject an account deletion request. Approving permanently deletes user files & account."""
     import os
-    from files import STORAGE_PATH
+    from files import get_user_storage_path
 
     dr = db.query(DeletionRequest).filter(DeletionRequest.id == request_id).first()
     if not dr:
@@ -823,7 +823,7 @@ def handle_deletion_request(
         files = db.query(FileRecord).filter(FileRecord.owner_id == target_user_id).all()
         deleted_file_count = 0
         for f in files:
-            file_path = os.path.join(STORAGE_PATH, f.filename)
+            file_path = os.path.join(get_user_storage_path(f.owner_id), f.filename)
             if os.path.exists(file_path):
                 try:
                     os.remove(file_path)

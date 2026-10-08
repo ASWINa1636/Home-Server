@@ -82,7 +82,7 @@ export default function AdminMessages() {
         refreshState={refreshState}
       />
 
-      <div style={styles.container}>
+      <div style={styles.container} className="admin-messages-container">
         {/* Left pane: Conversation Threads */}
         <div style={styles.threadList}>
           <div style={styles.paneHeader}>

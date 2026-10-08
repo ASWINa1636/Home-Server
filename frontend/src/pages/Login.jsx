@@ -56,7 +56,7 @@ export default function Login() {
       </div>
 
       {/* Login card */}
-      <div style={{
+      <div className="login-card" style={{
         ...styles.card,
         animation: shake ? 'shake 0.5s ease' : 'fadeInUp 0.6s ease',
       }}>

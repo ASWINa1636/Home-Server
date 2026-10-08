@@ -27,6 +27,8 @@ storage/
 backend/storage/
 uploads/
 backend/uploads/
+data/
+homeserver-data/
 
 # ==========================================
 # Databases & SQLite

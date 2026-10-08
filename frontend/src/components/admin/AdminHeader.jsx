@@ -15,14 +15,14 @@ export default function AdminHeader({ title, subtitle, refreshState }) {
   const { lastUpdated, isRefreshing, refresh, intervalMs, updateInterval } = refreshState || {};
 
   return (
-    <header style={styles.header}>
+    <header style={styles.header} className="admin-header">
       <div>
         {title && <h1 style={styles.title}>{title}</h1>}
         {subtitle && <p style={styles.subtitle}>{subtitle}</p>}
       </div>
 
       {refreshState && (
-        <div style={styles.controls}>
+        <div style={styles.controls} className="admin-header-controls">
           {/* Timestamp */}
           <div style={styles.timestamp} title="Last updated timestamp">
             <Clock size={14} style={{ color: '#94a3b8' }} />

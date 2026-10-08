@@ -78,7 +78,7 @@ export default function AdminOverview() {
       />
 
       {/* Stat cards grid */}
-      <div style={styles.statGrid}>
+      <div style={styles.statGrid} className="admin-stat-grid">
         <StatCard
           icon={<Users size={22} />}
           label="Total Users"
@@ -140,9 +140,9 @@ export default function AdminOverview() {
       </div>
 
       {/* Charts */}
-      <div style={styles.chartGrid}>
+      <div style={styles.chartGrid} className="admin-chart-grid">
         {/* Storage per user */}
-        <div style={styles.chartCard}>
+        <div style={styles.chartCard} className="admin-chart-card">
           <h3 style={styles.chartTitle}>Storage Usage by User</h3>
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -165,7 +165,7 @@ export default function AdminOverview() {
         </div>
 
         {/* Login activity */}
-        <div style={styles.chartCard}>
+        <div style={styles.chartCard} className="admin-chart-card">
           <h3 style={styles.chartTitle}>Login Activity (30 days)</h3>
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">

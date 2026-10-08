@@ -397,4 +397,179 @@ a:hover {
   :root {
     --sidebar-width: 0px;
   }
+
+  /* ---- Dashboard main content ---- */
+  .dashboard-main {
+    margin-left: 0 !important;
+  }
+
+  /* ---- Mobile hamburger button ---- */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  /* ---- Sidebar close button ---- */
+  .sidebar-close-btn {
+    display: flex !important;
+  }
+
+  /* ---- Top bar padding ---- */
+  .dashboard-topbar {
+    padding: 12px 16px !important;
+    gap: 10px !important;
+  }
+
+  /* ---- Search wrapper ---- */
+  .dashboard-search {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+  }
+
+  /* ---- Toolbar ---- */
+  .dashboard-toolbar {
+    padding: 12px 16px !important;
+    gap: 10px !important;
+  }
+
+  .toolbar-left {
+    gap: 6px !important;
+  }
+
+  .toolbar-left .btn {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  /* Hide "New Folder" text on small screens, keep icon */
+  .toolbar-left .btn svg + span {
+    display: inline;
+  }
+
+  /* ---- Content padding ---- */
+  .dashboard-content {
+    padding: 0 16px 16px !important;
+  }
+
+  /* ---- File grid: fewer columns on mobile ---- */
+  .file-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  /* ---- File list / tables: horizontal scroll wrapper ---- */
+  .file-list-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ---- New folder row ---- */
+  .new-folder-row {
+    padding: 0 16px 12px !important;
+  }
+
+  .new-folder-row .input {
+    max-width: 100% !important;
+    flex: 1 !important;
+  }
+
+  /* ---- Results summary ---- */
+  .results-summary {
+    padding: 0 16px 8px !important;
+    font-size: 12px !important;
+    flex-wrap: wrap;
+  }
+
+  /* ---- Admin layout ---- */
+  .admin-main {
+    margin-left: 0 !important;
+    padding: 16px !important;
+  }
+
+  /* ---- Admin header ---- */
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .admin-header h1 {
+    font-size: 22px !important;
+  }
+
+  .admin-header-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px !important;
+    padding: 6px 10px !important;
+  }
+
+  /* ---- Admin stat grid ---- */
+  .admin-stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  /* ---- Admin chart grid: stack on mobile ---- */
+  .admin-chart-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-chart-card {
+    padding: 16px !important;
+  }
+
+  /* ---- Admin messages: stack thread list and chat ---- */
+  .admin-messages-container {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+
+  /* ---- Tables in admin pages ---- */
+  .admin-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .admin-table-wrapper table {
+    min-width: 600px;
+  }
+
+  /* ---- Upload zone ---- */
+  .upload-queue {
+    max-height: 40vh;
+  }
+
+  /* ---- Breadcrumbs: truncate on mobile ---- */
+  .breadcrumbs {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60vw;
+  }
+
+  /* ---- Mobile header bar for admin ---- */
+  .admin-mobile-header {
+    display: flex !important;
+  }
+
+  /* ---- Login card responsive ---- */
+  .login-card {
+    padding: 28px 20px !important;
+    margin: 0 12px;
+  }
+}
+
+/* Hide mobile-only elements on desktop */
+@media (min-width: 769px) {
+  .mobile-menu-btn {
+    display: none !important;
+  }
+
+  .admin-mobile-header {
+    display: none !important;
+  }
 }

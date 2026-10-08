@@ -11,9 +11,12 @@ services:
 
     environment:
       DATABASE_URL: sqlite:////data/homeserver.db
+      STORAGE_PATH: /data/users
+      TEMP_PATH: /tmp/homeserver
+      MAX_UPLOAD_SIZE: 53687091200
 
     volumes:
-      - ./data:/data
+      - /data/homeserver-data:/data
 
     expose:
       - "8000"
