@@ -1,0 +1,46 @@
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+
+    container_name: homeserver-backend
+
+    restart: unless-stopped
+
+    environment:
+      DATABASE_URL: sqlite:////data/homeserver.db
+
+    volumes:
+      - ./data:/data
+
+    expose:
+      - "8000"
+
+    networks:
+      - homeserver
+
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+
+    container_name: homeserver-frontend
+
+    restart: unless-stopped
+
+    ports:
+      - "8000:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - homeserver
+
+
+networks:
+  homeserver:
+    driver: bridge

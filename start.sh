@@ -11,9 +11,14 @@ cd ..
 
 echo ""
 echo "Server running at:"
-echo "  Local:   http://localhost:8000"
-echo "  Network: http://$(hostname -I | awk '{print $1}'):8000"
-echo "  Public:  https://aswin-inspiron-3501.tailfcb304.ts.net/"
+echo "  Local:     http://localhost:8000"
+echo "  Network:   http://$(hostname -I | awk '{print $1}'):8000"
+
+# Show Tailscale IP if available
+TS_IP=$(tailscale ip -4 2>/dev/null)
+if [ -n "$TS_IP" ]; then
+  echo "  Tailscale: http://${TS_IP}:8000  (private, high-speed)"
+fi
 
 echo ""
 echo "Press Ctrl+C to stop"

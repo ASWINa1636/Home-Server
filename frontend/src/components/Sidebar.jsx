@@ -24,6 +24,14 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
   const { username, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [storageInfo, setStorageInfo] = useState(null);
+  const [connectionInfo, setConnectionInfo] = useState(null);
+
+  // Fetch connection type once on mount
+  useEffect(() => {
+    api.get('/api/connection-info')
+      .then(res => setConnectionInfo(res.data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let timeoutId;
@@ -85,6 +93,18 @@ export default function Sidebar({ activeFilter, onFilterChange, isOpen, onToggle
             <Server size={22} strokeWidth={1.5} />
           </div>
           <span style={styles.logoText}>HomeServer</span>
+          {connectionInfo && (
+            <span style={{
+              ...styles.connectionPill,
+              ...(connectionInfo.access === 'private' ? styles.connectionPrivate :
+                  connectionInfo.access === 'public' ? styles.connectionPublic :
+                  styles.connectionLocal),
+            }} title={connectionInfo.detail}>
+              {connectionInfo.access === 'private' ? '🟢' :
+               connectionInfo.access === 'public' ? '🌐' : '🏠'}
+              {' '}{connectionInfo.label}
+            </span>
+          )}
           <button
             style={styles.closeBtn}
             onClick={onToggle}
@@ -420,5 +440,30 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'all 0.15s ease',
+  },
+  connectionPill: {
+    fontSize: 9,
+    fontWeight: 600,
+    padding: '2px 7px',
+    borderRadius: 6,
+    letterSpacing: '0.02em',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+    lineHeight: '16px',
+  },
+  connectionPrivate: {
+    background: 'rgba(16, 185, 129, 0.12)',
+    color: '#34d399',
+    border: '1px solid rgba(16, 185, 129, 0.2)',
+  },
+  connectionPublic: {
+    background: 'rgba(59, 130, 246, 0.12)',
+    color: '#60a5fa',
+    border: '1px solid rgba(59, 130, 246, 0.2)',
+  },
+  connectionLocal: {
+    background: 'rgba(148, 163, 184, 0.1)',
+    color: '#94a3b8',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
   },
 };

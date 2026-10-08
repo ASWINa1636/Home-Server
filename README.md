@@ -1,6 +1,6 @@
 # 🏠 HomeServer — Modern, Hardened Private Cloud & Video Streaming
 
-**HomeServer** is a modern, security-hardened private cloud storage and video streaming application built with **FastAPI** (Python) and **React + Vite**. It allows you to upload, manage, search, and stream your personal files and media securely across your local network or remotely via **Tailscale**.
+**HomeServer** is a modern, security-hardened private cloud storage and video streaming application built with **FastAPI** (Python) and **React + Vite**. It allows you to upload, manage, search, and stream your personal files and media securely — privately via **Tailscale** or publicly via **Cloudflare Tunnel**.
 
 ---
 
@@ -11,7 +11,7 @@
 - **Configurable CORS Lockdown**: Strict origin checks using `ALLOWED_ORIGINS` (no wildcard `*`).
 - **Rate Limiting**: Protected authentication endpoints (`/api/auth/login` at 5 req/min, `/api/auth/signup` at 3 req/min) using `slowapi`.
 - **Password Complexity Validation**: Enforces minimum length, uppercase, lowercase, digit, and special character requirements.
-- **Security Headers Middleware**: Applies `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and `Permissions-Policy`.
+- **Security Headers Middleware**: Applies `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, and `Strict-Transport-Security` (auto-enabled over HTTPS).
 - **Filename & Path Traversal Sanitization**: Prevents directory traversal attacks (`..`) across all file uploads, reads, downloads, renames, and deletions.
 - **50GB File Upload Limit**: Enforces maximum upload sizes via stream-counting bytes.
 - **Secure Error Handling**: Sanitized error responses prevent backend stack traces from leaking to clients.
@@ -29,6 +29,7 @@
 - **Upload Zone**: Fullscreen drag-and-drop overlay, folder structure preservation, individual progress bars per file queue.
 - **Real-Time Password Strength Meter**: Live requirement checks and progress indicator during registration.
 - **Toast Notification System**: Animated slide-in toasts for success, error, warning, and info alerts.
+- **Connection Indicator**: Sidebar shows current access path — 🟢 Private (Tailscale), 🌐 Public (Cloudflare), or 🏠 Local.
 
 ---
 
@@ -100,8 +101,11 @@ Output:
 Starting HomeServer...
 
 Server running at:
-  Local:   http://localhost:8000
-  Network: http://192.168.29.17:8000
+  Local:     http://localhost:8000
+  Network:   http://192.168.29.17:8000
+  Tailscale: http://100.100.100.100:8000  (private, high-speed)
+
+  For public access, run cloudflared tunnel in a separate terminal.
 
 Press Ctrl+C to stop
 ```
@@ -119,7 +123,8 @@ You can edit `backend/.env` to configure server settings:
 SECRET_KEY=your_strong_random_secret_key_here
 
 # Allowed origins for CORS (comma-separated)
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000
+# Include your Cloudflare Tunnel domain for public access
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000,https://your-domain.com
 
 # File upload limit (in bytes) — Default is 50GB
 MAX_UPLOAD_SIZE=53687091200
@@ -130,58 +135,163 @@ STORAGE_PATH=/data/uploads
 
 ---
 
-## 📱 Mobile & Tailscale Access
+## 🌐 Hybrid Access Architecture
 
-### Accessing on Local Wi-Fi
-1. Connect your phone/tablet to the same Wi-Fi network.
-2. Open your mobile browser and enter the server's local IP address (e.g. `http://192.168.29.17:8000`).
+HomeServer supports **two simultaneous access paths** from a single backend:
 
-### Accessing Remotely via Tailscale
-1. Install **Tailscale** on your server and mobile device/laptop.
-2. Connect both devices to your Tailnet.
-3. Get your server's Tailscale IP:
-   ```bash
-   tailscale ip
-   ```
-4. Access the web app from anywhere at `http://<TAILSCALE-IP>:8000`.
+```text
+┌─────────────────────────────────────────────────────────┐
+│                     Your Laptop                         │
+│                                                         │
+│   FastAPI (port 8000) ← serves API + React frontend     │
+│       ▲              ▲                                  │
+│       │              │                                  │
+│   Tailscale      cloudflared                            │
+│   (WireGuard)    (Cloudflare Tunnel)                    │
+│       │              │                                  │
+└───────│──────────────│──────────────────────────────────┘
+        │              │
+        ▼              ▼
+  ┌───────────┐  ┌──────────────┐
+  │ Trusted   │  │ Public Users │
+  │ Users     │  │ (anyone)     │
+  │           │  │              │
+  │ Tailscale │  │ Cloudflare   │
+  │ app       │  │ HTTPS URL    │
+  │ installed │  │              │
+  │           │  │ your-domain  │
+  │ Fast,     │  │ .com         │
+  │ direct    │  │              │
+  └───────────┘  └──────────────┘
+```
 
----
-
-## 🌐 Public Access via Tailscale Funnel
-
-You can expose your HomeServer to the public internet securely using **Tailscale Funnel**. This allows anyone (even people without Tailscale) to access your server using a public HTTPS link!
-
-### How it works
-Tailscale Funnel can be permanently configured to run in the background as a service. Once configured, you never need to enter your password or manually start it again. As long as your HomeServer is running on port 8000, Tailscale will magically route public HTTPS traffic to it!
-
-### Step-by-Step Setup
-1. **Enable Funnel:** Go to the [Tailscale Funnel settings](https://login.tailscale.com/f/funnel) and ensure it is turned on for your account.
-2. **Configure the Background Proxy (Run this ONCE):**
-   Open a terminal and run the following command to permanently configure the Funnel in the background:
-   ```bash
-   sudo tailscale funnel --bg 8000
-   ```
-   *(Enter your password when prompted. It will say "Funnel started and running in the background.")*
-3. **Start your Server:**
-   You can now start your web server using your custom shortcut from anywhere:
-   ```bash
-   homeserver
-   ```
-4. **Access your server:**
-   Your public link will now work flawlessly from any device in the world, even on LTE!
-   `Available on the internet: https://aswin-inspiron-3501.tailfcb304.ts.net/`
-
-### Customizing your Link
-By default, Tailscale generates a link using your machine's original hostname (e.g., `aswin-inspiron-3501.tailfcb304.ts.net`). You can easily customize this!
-
-1. Go to your **[Tailscale Admin Console](https://login.tailscale.com/admin/machines)**.
-2. Find your laptop in the list, click the three dots (`...`) on the right, and choose **Edit machine name**.
-3. Change it to something cleaner, like `cloud`, `server`, or `homeserver`.
-4. Your public link will instantly update (e.g., `https://cloud.tailfcb304.ts.net/`)!
+| Feature | Tailscale (Private) | Cloudflare Tunnel (Public) |
+|---------|--------------------|-----------------------------|
+| **Who** | You + trusted users | Anyone with the link |
+| **Speed** | ⚡ Direct WireGuard | 🌐 Via Cloudflare edge |
+| **Setup** | Install Tailscale app | Just open the URL |
+| **Encryption** | WireGuard (E2E) | Cloudflare TLS |
+| **URL** | `http://<tailscale-ip>:8000` | `https://your-domain.com` |
+| **Indicator** | 🟢 Private | 🌐 Public |
 
 ---
 
+## 📱 Private Access via Tailscale (High-Speed)
 
+This is the **fastest** way to access your server. Traffic flows directly between devices over an encrypted WireGuard tunnel — no intermediaries.
+
+### For You (Server Owner)
+1. Install **Tailscale** on your laptop (server): https://tailscale.com/download
+2. Log in and connect to your tailnet.
+3. Your server is automatically accessible at your Tailscale IP.
+
+### For Trusted Users
+1. Have them install **Tailscale** on their device.
+2. Share your tailnet with them (Tailscale Admin Console → Share a device or use Tailscale sharing).
+3. Give them your Tailscale IP:
+   ```bash
+   tailscale ip -4
+   ```
+4. They access: `http://<YOUR-TAILSCALE-IP>:8000`
+
+> **Note**: This is plain HTTP, but it's fully secure — Tailscale encrypts all traffic end-to-end using WireGuard. No HTTPS certificate is needed.
+
+---
+
+## 🌐 Public Access via Cloudflare Tunnel
+
+For users who don't have Tailscale, Cloudflare Tunnel provides fast, secure public access with a proper HTTPS URL.
+
+### Step 1: Install `cloudflared`
+
+```bash
+# Debian/Ubuntu
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+
+# Or via package manager
+# Arch: yay -S cloudflared
+# macOS: brew install cloudflared
+```
+
+### Step 2: Quick Test (No Account Needed)
+
+Try it instantly with a temporary random URL:
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+This gives you a temporary `https://xxxxx.trycloudflare.com` URL. Great for testing!
+
+### Step 3: Permanent Tunnel with Custom Domain
+
+For a stable URL with your own domain:
+
+#### a) Create a Cloudflare account & add your domain
+1. Sign up at https://dash.cloudflare.com
+2. Add your domain and point its nameservers to Cloudflare.
+
+#### b) Authenticate `cloudflared`
+```bash
+cloudflared tunnel login
+```
+This opens a browser — select your domain to authorize.
+
+#### c) Create a named tunnel
+```bash
+cloudflared tunnel create homeserver
+```
+
+#### d) Configure DNS
+```bash
+cloudflared tunnel route dns homeserver cloud.your-domain.com
+```
+Replace `cloud.your-domain.com` with your desired subdomain.
+
+#### e) Create the config file
+```bash
+mkdir -p ~/.cloudflared
+cat > ~/.cloudflared/config.yml << EOF
+tunnel: homeserver
+credentials-file: /home/$USER/.cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - hostname: cloud.your-domain.com
+    service: http://localhost:8000
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404
+EOF
+```
+
+> Replace `<TUNNEL-ID>` with the ID printed by `cloudflared tunnel create`. You can find it with `cloudflared tunnel list`.
+
+#### f) Run the tunnel
+```bash
+cloudflared tunnel run homeserver
+```
+
+#### g) (Optional) Run as a system service
+```bash
+sudo cloudflared service install
+sudo systemctl enable cloudflared
+sudo systemctl start cloudflared
+```
+
+Now your server is permanently available at `https://cloud.your-domain.com`!
+
+### Step 4: Update CORS
+
+Add your Cloudflare domain to `backend/.env`:
+
+```ini
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000,https://cloud.your-domain.com
+```
+
+Then restart the server.
+
+---
 
 ## 📂 Project Architecture
 
@@ -192,7 +302,7 @@ homeserver/
 │   ├── auth.py           # JWT authentication & password validation
 │   ├── files.py          # File operations, uploads, streaming & range requests
 │   ├── admin.py          # Admin dashboard API routes
-│   ├── middleware.py      # Security headers & HTTP range request middleware
+│   ├── middleware.py      # Security headers, CSP, HSTS & range request middleware
 │   ├── database.py       # SQLAlchemy database connection
 │   ├── models.py         # Database models (User, FileRecord, Device, etc.)
 │   ├── promote_admin.py  # CLI script to promote a user to admin
@@ -205,11 +315,9 @@ homeserver/
 │   │   ├── hooks/        # useAutoRefresh
 │   │   ├── pages/        # Login, Signup, Dashboard, ResetPassword, Admin/*
 │   │   ├── utils/        # File extension, size & icon utilities
-│   │   ├── api.js        # Axios API client with configurable base URL
+│   │   ├── api.js        # Axios API client with dynamic base URL
 │   │   ├── App.jsx       # Main application routes & layout
 │   │   └── index.css     # Design system & global glassmorphic CSS
-│   ├── vercel.json       # Vercel SPA routing configuration
-│   ├── .env.example      # Frontend environment variable template
 │   └── dist/             # Compiled production bundle served by FastAPI
 ├── install.sh            # One-click installation script
 ├── start.sh              # Startup script
@@ -219,4 +327,8 @@ homeserver/
 ---
 
 ## 🔒 Security Note
-Do **not** expose port 8000 directly to the public internet using router port forwarding. Use **Tailscale** (private access) or **Tailscale Funnel** (public access with TLS) for secure remote access.
+
+- Do **not** expose port 8000 directly to the public internet using router port forwarding.
+- Use **Tailscale** for private access (encrypted WireGuard tunnel).
+- Use **Cloudflare Tunnel** for public access (Cloudflare handles TLS, DDoS protection, and edge caching).
+- Both methods keep your server's real IP address hidden from the internet.

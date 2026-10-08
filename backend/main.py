@@ -95,10 +95,49 @@ ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+# ---------------------------------------------------------------------------
+# Connection info endpoint (hybrid access indicator)
+# ---------------------------------------------------------------------------
+@app.get("/api/connection-info")
+def connection_info(request: Request):
+    """
+    Lightweight endpoint that tells the frontend how the user is connecting.
+    Used to display a non-intrusive indicator (Private/Public/Local).
+    No auth required — only reveals the access path type, not sensitive data.
+    """
+    # Check for Cloudflare Tunnel headers
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return {"access": "public", "label": "Public", "detail": "Cloudflare Tunnel"}
+
+    # Check client IP for access type
+    client_ip = request.client.host if request.client else "unknown"
+
+    if client_ip in ("127.0.0.1", "::1", "localhost"):
+        return {"access": "local", "label": "Local", "detail": "localhost"}
+
+    # Tailscale CGNAT range: 100.64.0.0/10 (100.64.x.x – 100.127.x.x)
+    if client_ip.startswith("100."):
+        try:
+            second_octet = int(client_ip.split(".")[1])
+            if 64 <= second_octet <= 127:
+                return {"access": "private", "label": "Private", "detail": "Tailscale"}
+        except (IndexError, ValueError):
+            pass
+
+    # LAN ranges
+    if (client_ip.startswith("192.168.") or client_ip.startswith("10.")
+            or client_ip.startswith("172.")):
+        return {"access": "local", "label": "Local", "detail": "LAN"}
+
+    return {"access": "unknown", "label": "Network", "detail": client_ip}
+
 
 # ---------------------------------------------------------------------------
 # File routes
