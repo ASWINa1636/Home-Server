@@ -1,45 +1,31 @@
 services:
-
   backend:
     image: ghcr.io/aswina1636/home-server-backend:latest
-
     container_name: homeserver-backend
-
     restart: unless-stopped
-
     environment:
       DATABASE_URL: sqlite:////data/homeserver.db
       STORAGE_PATH: /data/users
       TEMP_PATH: /tmp/homeserver
       MAX_UPLOAD_SIZE: 53687091200
-
     volumes:
-      - /data/homeserver-data:/data
-
+    - /data/homeserver-data:/data
     expose:
-      - "8000"
-
+    - '8000'
     networks:
-      - homeserver
-
-
+    - homeserver
+    env_file:
+    - ./backend/.env
   frontend:
     image: ghcr.io/aswina1636/home-server-frontend:latest
-
     container_name: homeserver-frontend
-
     restart: unless-stopped
-
     ports:
-      - "8000:80"
-
+    - 8000:80
     depends_on:
-      - backend
-
+    - backend
     networks:
-      - homeserver
-
-
+    - homeserver
 networks:
   homeserver:
     driver: bridge

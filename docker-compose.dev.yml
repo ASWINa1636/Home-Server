@@ -1,19 +1,22 @@
 services:
-
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
 
+    image: ghcr.io/aswina1636/home-server-backend:latest
     container_name: homeserver-backend
 
     restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
 
     environment:
       DATABASE_URL: sqlite:////data/homeserver.db
       STORAGE_PATH: /data/users
       TEMP_PATH: /tmp/homeserver
-      MAX_UPLOAD_SIZE: 53687091200
+      MAX_UPLOAD_SIZE: "53687091200"
 
     volumes:
       - /data/homeserver-data:/data
@@ -24,12 +27,23 @@ services:
     networks:
       - homeserver
 
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/connection-info', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
 
+    image: ghcr.io/aswina1636/home-server-frontend:latest
     container_name: homeserver-frontend
 
     restart: unless-stopped
@@ -38,11 +52,11 @@ services:
       - "8000:80"
 
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
     networks:
       - homeserver
-
 
 networks:
   homeserver:
