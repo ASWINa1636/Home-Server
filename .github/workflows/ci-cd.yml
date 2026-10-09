@@ -1,3 +1,4 @@
+```yaml
 name: HomeServer CI/CD
 
 on:
@@ -10,22 +11,18 @@ permissions:
   packages: write
 
 env:
-  REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/aswina1636/home-server-backend
   FRONTEND_IMAGE: ghcr.io/aswina1636/home-server-frontend
 
 jobs:
-
   # ============================================================
-  # CI
+  # BACKEND CI
   # ============================================================
-
   test:
     name: Test Backend
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -39,20 +36,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
 
-      - name: Python syntax check
-        run: |
-          python -m compileall backend
+      - name: Check Python syntax
+        run: python -m compileall -q backend
 
   # ============================================================
-  # FRONTEND BUILD
+  # FRONTEND CI
   # ============================================================
-
   frontend-build:
     name: Build Frontend
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -63,7 +57,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
@@ -72,9 +66,8 @@ jobs:
         run: npm run build
 
   # ============================================================
-  # DOCKER BUILD + GHCR
+  # BUILD AND PUBLISH IMAGES TO GHCR
   # ============================================================
-
   docker:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
@@ -84,11 +77,10 @@ jobs:
       - frontend-build
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -99,80 +91,211 @@ jobs:
         run: |
           docker build \
             -f Dockerfile.backend \
-            -t $BACKEND_IMAGE:latest \
-            -t $BACKEND_IMAGE:${{ github.sha }} \
+            -t "$BACKEND_IMAGE:latest" \
+            -t "$BACKEND_IMAGE:${GITHUB_SHA}" \
             .
 
       - name: Build frontend image
         run: |
           docker build \
             -f Dockerfile.frontend \
-            -t $FRONTEND_IMAGE:latest \
-            -t $FRONTEND_IMAGE:${{ github.sha }} \
+            -t "$FRONTEND_IMAGE:latest" \
+            -t "$FRONTEND_IMAGE:${GITHUB_SHA}" \
             .
 
-      - name: Push backend image
+      - name: Push backend images
         run: |
-          docker push $BACKEND_IMAGE:latest
-          docker push $BACKEND_IMAGE:${{ github.sha }}
+          docker push "$BACKEND_IMAGE:latest"
+          docker push "$BACKEND_IMAGE:${GITHUB_SHA}"
 
-      - name: Push frontend image
+      - name: Push frontend images
         run: |
-          docker push $FRONTEND_IMAGE:latest
-          docker push $FRONTEND_IMAGE:${{ github.sha }}
+          docker push "$FRONTEND_IMAGE:latest"
+          docker push "$FRONTEND_IMAGE:${GITHUB_SHA}"
 
   # ============================================================
-  # DEPLOY TO HOMESERVER
+  # DEPLOY TO THE HOMESERVER LAPTOP
   # ============================================================
-
   deploy:
     name: Deploy HomeServer
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, homeserver]
 
     needs:
       - docker
 
+    # Never deploy code from pull requests.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     steps:
+      - name: Configure temporary Docker credentials
+        shell: bash
+        run: |
+          DOCKER_CONFIG_DIR="$RUNNER_TEMP/docker-config-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$DOCKER_CONFIG_DIR"
+          chmod 700 "$DOCKER_CONFIG_DIR"
+          echo "DOCKER_CONFIG=$DOCKER_CONFIG_DIR" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | \
-          docker login ghcr.io \
-            -u "${{ github.actor }}" \
-            --password-stdin
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" |
+            docker login ghcr.io \
+              --username "$GHCR_USER" \
+              --password-stdin
 
-      - name: Pull latest images
+      - name: Verify production data directory
+        shell: bash
         run: |
-          cd ~/homeserver
+          set -euo pipefail
+
+          test -d /data/homeserver-data
+          test -f /data/homeserver-data/homeserver.db
+
+          if ! mountpoint -q /data; then
+            echo "ERROR: /data is not a mounted filesystem."
+            exit 1
+          fi
+
+          echo "Production data directory verified."
+
+      - name: Pull published images
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$HOME/homeserver"
           docker compose pull
 
-      - name: Backup HomeServer data
+      - name: Backup SQLite database
+        shell: bash
         run: |
+          set -euo pipefail
+
+          DATA_DIR="/data/homeserver-data"
           BACKUP_DIR="/data/homeserver-backups"
-          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+          TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
 
           mkdir -p "$BACKUP_DIR"
 
-          if [ -f "/data/homeserver-data/homeserver.db" ]; then
-            cp "/data/homeserver-data/homeserver.db" \
-               "$BACKUP_DIR/homeserver-$TIMESTAMP.db"
-          fi
+          # Use SQLite's online backup API for a consistent snapshot.
+          docker exec homeserver-backend python -c '
+          import os
+          import sqlite3
+          import sys
 
-      - name: Deploy containers
+          source = "/data/homeserver.db"
+          destination = sys.argv[1]
+
+          if not os.path.isfile(source):
+              raise SystemExit("Database file not found")
+
+          src = sqlite3.connect(source, timeout=30)
+          dst = sqlite3.connect(destination)
+
+          try:
+              src.backup(dst)
+              result = dst.execute("PRAGMA integrity_check").fetchone()[0]
+              if result != "ok":
+                  raise RuntimeError(f"Backup integrity check failed: {result}")
+          finally:
+              dst.close()
+              src.close()
+
+          print(f"Verified database backup: {destination}")
+          ' "$BACKUP_DIR/homeserver-$TIMESTAMP.db"
+
+          chmod 600 "$BACKUP_DIR/homeserver-$TIMESTAMP.db"
+
+      - name: Record currently deployed images
+        id: previous
+        shell: bash
         run: |
-          cd ~/homeserver
+          set -euo pipefail
+          cd "$HOME/homeserver"
+
+          BACKEND_ID="$(docker inspect --format='{{.Image}}' homeserver-backend)"
+          FRONTEND_ID="$(docker inspect --format='{{.Image}}' homeserver-frontend)"
+
+          echo "backend=$BACKEND_ID" >> "$GITHUB_OUTPUT"
+          echo "frontend=$FRONTEND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy new containers
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$HOME/homeserver"
+
           docker compose up -d --remove-orphans
 
       - name: Wait for application
+        shell: bash
         run: |
-          sleep 10
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent \
+              http://localhost:8000/api/connection-info >/dev/null; then
+              echo "HomeServer is responding."
+              exit 0
+            fi
 
-      - name: Health check
-        run: |
-          curl --fail --silent --show-error \
-            http://localhost:8000/api/connection-info
+            sleep 2
+          done
 
-      - name: Show container status
+          echo "ERROR: HomeServer did not become healthy."
+          exit 1
+
+      - name: Show deployed container status
+        if: success()
+        shell: bash
         run: |
-          cd ~/homeserver
+          cd "$HOME/homeserver"
           docker compose ps
+
+      - name: Roll back application images on failure
+        if: failure() && steps.previous.outcome == 'success'
+        shell: bash
+        env:
+          PREVIOUS_BACKEND_ID: ${{ steps.previous.outputs.backend }}
+          PREVIOUS_FRONTEND_ID: ${{ steps.previous.outputs.frontend }}
+        run: |
+          set -euo pipefail
+
+          cd "$HOME/homeserver"
+
+          # Restore the exact previous image IDs, not the mutable latest tag.
+          docker tag "$PREVIOUS_BACKEND_ID" \
+            "$BACKEND_IMAGE:rollback"
+
+          docker tag "$PREVIOUS_FRONTEND_ID" \
+            "$FRONTEND_IMAGE:rollback"
+
+          # Create a temporary Compose override for the previous images.
+          OVERRIDE_FILE="$(mktemp)"
+          trap 'rm -f "$OVERRIDE_FILE"' EXIT
+
+          cat > "$OVERRIDE_FILE" <<'YAML'
+          services:
+            backend:
+              image: ghcr.io/aswina1636/home-server-backend:rollback
+            frontend:
+              image: ghcr.io/aswina1636/home-server-frontend:rollback
+          YAML
+
+          docker compose -f docker-compose.yml \
+            -f "$OVERRIDE_FILE" up -d --remove-orphans
+
+          echo "Previous application images restored."
+          docker compose ps
+
+      - name: Remove temporary Docker credentials
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${DOCKER_CONFIG:-}" ] &&
+             [[ "$DOCKER_CONFIG" == "$RUNNER_TEMP"/docker-config-* ]]; then
+            rm -rf -- "$DOCKER_CONFIG"
+          fi
+```
