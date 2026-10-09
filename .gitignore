@@ -86,3 +86,11 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 notes.txt
+# Local GitHub Actions runner (never commit runner files or credentials)
+actions-runner/
+
+# Separate HomeServer V2 project
+homeserver-V2/
+
+# Deployment backups
+homeserver-backups/
