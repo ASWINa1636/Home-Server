@@ -1,3 +1,4 @@
+
 name: HomeServer CI/CD
 
 on:
@@ -15,7 +16,7 @@ env:
 
 jobs:
   # ============================================================
-  # BACKEND CI
+  # 1. BACKEND CI
   # ============================================================
   test:
     name: Test Backend
@@ -39,7 +40,7 @@ jobs:
         run: python -m compileall -q backend
 
   # ============================================================
-  # FRONTEND CI
+  # 2. FRONTEND CI
   # ============================================================
   frontend-build:
     name: Build Frontend
@@ -65,7 +66,7 @@ jobs:
         run: npm run build
 
   # ============================================================
-  # BUILD AND PUBLISH IMAGES TO GHCR
+  # 3. BUILD AND PUBLISH DOCKER IMAGES
   # ============================================================
   docker:
     name: Build and Push Docker Images
@@ -79,7 +80,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -88,6 +89,7 @@ jobs:
 
       - name: Build backend image
         run: |
+          set -euo pipefail
           docker build \
             -f Dockerfile.backend \
             -t "$BACKEND_IMAGE:latest" \
@@ -96,6 +98,7 @@ jobs:
 
       - name: Build frontend image
         run: |
+          set -euo pipefail
           docker build \
             -f Dockerfile.frontend \
             -t "$FRONTEND_IMAGE:latest" \
@@ -104,16 +107,18 @@ jobs:
 
       - name: Push backend images
         run: |
+          set -euo pipefail
           docker push "$BACKEND_IMAGE:latest"
           docker push "$BACKEND_IMAGE:${GITHUB_SHA}"
 
       - name: Push frontend images
         run: |
+          set -euo pipefail
           docker push "$FRONTEND_IMAGE:latest"
           docker push "$FRONTEND_IMAGE:${GITHUB_SHA}"
 
   # ============================================================
-  # DEPLOY TO THE HOMESERVER LAPTOP
+  # 4. DEPLOY TO HOMESERVER
   # ============================================================
   deploy:
     name: Deploy HomeServer
@@ -122,18 +127,32 @@ jobs:
     needs:
       - docker
 
-    # Never deploy code from pull requests.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Configure temporary Docker credentials
+      # --------------------------------------------------------
+      # Configure Docker Desktop and isolated credentials
+      # --------------------------------------------------------
+      - name: Configure Docker Desktop
         shell: bash
         run: |
+          set -euo pipefail
+
+          docker context inspect desktop-linux >/dev/null
+
+          echo "DOCKER_CONTEXT=desktop-linux" >> "$GITHUB_ENV"
+
           DOCKER_CONFIG_DIR="$RUNNER_TEMP/docker-config-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "$DOCKER_CONFIG_DIR"
           chmod 700 "$DOCKER_CONFIG_DIR"
+
           echo "DOCKER_CONFIG=$DOCKER_CONFIG_DIR" >> "$GITHUB_ENV"
 
+          docker --context desktop-linux info
+
+      # --------------------------------------------------------
+      # Authenticate to GitHub Container Registry
+      # --------------------------------------------------------
       - name: Login to GHCR
         shell: bash
         env:
@@ -141,33 +160,44 @@ jobs:
           GHCR_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
+
           printf '%s' "$GHCR_TOKEN" |
-            docker login ghcr.io \
+            docker --context desktop-linux login ghcr.io \
               --username "$GHCR_USER" \
               --password-stdin
 
+      # --------------------------------------------------------
+      # Verify HDD and production data
+      # --------------------------------------------------------
       - name: Verify production data directory
         shell: bash
         run: |
           set -euo pipefail
 
-          test -d /data/homeserver-data
-          test -f /data/homeserver-data/homeserver.db
-
           if ! mountpoint -q /data; then
-            echo "ERROR: /data is not a mounted filesystem."
+            echo "ERROR: /data is not mounted."
             exit 1
           fi
 
-          echo "Production data directory verified."
+          test -d /data/homeserver-data
+          test -f /data/homeserver-data/homeserver.db
 
+          echo "Production HDD data directory verified."
+
+      # --------------------------------------------------------
+      # Pull images before changing running containers
+      # --------------------------------------------------------
       - name: Pull published images
         shell: bash
         run: |
           set -euo pipefail
           cd "$HOME/homeserver"
-          docker compose pull
 
+          docker --context desktop-linux compose pull
+
+      # --------------------------------------------------------
+      # Back up SQLite using the online backup API
+      # --------------------------------------------------------
       - name: Backup SQLite database
         shell: bash
         run: |
@@ -176,20 +206,18 @@ jobs:
           DATA_DIR="/data/homeserver-data"
           BACKUP_DIR="/data/homeserver-backups"
           TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
+          BACKUP_FILE="$BACKUP_DIR/homeserver-$TIMESTAMP.db"
+
+          mountpoint -q /data
+          test -f "$DATA_DIR/homeserver.db"
 
           mkdir -p "$BACKUP_DIR"
 
-          # Use SQLite's online backup API for a consistent snapshot.
-          docker exec homeserver-backend python -c '
-          import os
+          python3 - "$DATA_DIR/homeserver.db" "$BACKUP_FILE" <<'PY'
           import sqlite3
           import sys
 
-          source = "/data/homeserver.db"
-          destination = sys.argv[1]
-
-          if not os.path.isfile(source):
-              raise SystemExit("Database file not found")
+          source, destination = sys.argv[1:3]
 
           src = sqlite3.connect(source, timeout=30)
           dst = sqlite3.connect(destination)
@@ -197,63 +225,89 @@ jobs:
           try:
               src.backup(dst)
               result = dst.execute("PRAGMA integrity_check").fetchone()[0]
+
               if result != "ok":
-                  raise RuntimeError(f"Backup integrity check failed: {result}")
+                  raise RuntimeError(
+                      f"Backup integrity check failed: {result}"
+                  )
           finally:
               dst.close()
               src.close()
 
-          print(f"Verified database backup: {destination}")
-          ' "$BACKUP_DIR/homeserver-$TIMESTAMP.db"
+          print(f"Verified SQLite backup: {destination}")
+          PY
 
-          chmod 600 "$BACKUP_DIR/homeserver-$TIMESTAMP.db"
+          chmod 600 "$BACKUP_FILE"
 
+      # --------------------------------------------------------
+      # Record the running image IDs for rollback
+      # --------------------------------------------------------
       - name: Record currently deployed images
         id: previous
         shell: bash
         run: |
           set -euo pipefail
-          cd "$HOME/homeserver"
 
-          BACKEND_ID="$(docker inspect --format='{{.Image}}' homeserver-backend)"
-          FRONTEND_ID="$(docker inspect --format='{{.Image}}' homeserver-frontend)"
+          BACKEND_ID="$(
+            docker --context desktop-linux inspect \
+              --format='{{.Image}}' homeserver-backend
+          )"
+
+          FRONTEND_ID="$(
+            docker --context desktop-linux inspect \
+              --format='{{.Image}}' homeserver-frontend
+          )"
 
           echo "backend=$BACKEND_ID" >> "$GITHUB_OUTPUT"
           echo "frontend=$FRONTEND_ID" >> "$GITHUB_OUTPUT"
 
+      # --------------------------------------------------------
+      # Deploy the newly published images
+      # --------------------------------------------------------
       - name: Deploy new containers
-        id: deploy
         shell: bash
         run: |
           set -euo pipefail
           cd "$HOME/homeserver"
 
-          docker compose up -d --remove-orphans
+          docker --context desktop-linux compose up \
+            -d --remove-orphans
 
-      - name: Wait for application
+      # --------------------------------------------------------
+      # Verify the application responds
+      # --------------------------------------------------------
+      - name: Health check
         shell: bash
         run: |
+          set -euo pipefail
+
           for attempt in $(seq 1 30); do
-            if curl --fail --silent \
+            if curl --fail --silent --show-error \
               http://localhost:8000/api/connection-info >/dev/null; then
-              echo "HomeServer is responding."
+              echo "HomeServer health check passed."
               exit 0
             fi
 
             sleep 2
           done
 
-          echo "ERROR: HomeServer did not become healthy."
+          echo "ERROR: HomeServer failed its health check."
           exit 1
 
-      - name: Show deployed container status
+      # --------------------------------------------------------
+      # Display final container status
+      # --------------------------------------------------------
+      - name: Show container status
         if: success()
         shell: bash
         run: |
           cd "$HOME/homeserver"
-          docker compose ps
+          docker --context desktop-linux compose ps
 
-      - name: Roll back application images on failure
+      # --------------------------------------------------------
+      # Roll back application images if deployment fails
+      # --------------------------------------------------------
+      - name: Roll back application images
         if: failure() && steps.previous.outcome == 'success'
         shell: bash
         env:
@@ -264,14 +318,14 @@ jobs:
 
           cd "$HOME/homeserver"
 
-          # Restore the exact previous image IDs, not the mutable latest tag.
-          docker tag "$PREVIOUS_BACKEND_ID" \
+          docker --context desktop-linux tag \
+            "$PREVIOUS_BACKEND_ID" \
             "$BACKEND_IMAGE:rollback"
 
-          docker tag "$PREVIOUS_FRONTEND_ID" \
+          docker --context desktop-linux tag \
+            "$PREVIOUS_FRONTEND_ID" \
             "$FRONTEND_IMAGE:rollback"
 
-          # Create a temporary Compose override for the previous images.
           OVERRIDE_FILE="$(mktemp)"
           trap 'rm -f "$OVERRIDE_FILE"' EXIT
 
@@ -283,12 +337,17 @@ jobs:
               image: ghcr.io/aswina1636/home-server-frontend:rollback
           YAML
 
-          docker compose -f docker-compose.yml \
-            -f "$OVERRIDE_FILE" up -d --remove-orphans
+          docker --context desktop-linux compose \
+            -f docker-compose.yml \
+            -f "$OVERRIDE_FILE" \
+            up -d --remove-orphans
 
           echo "Previous application images restored."
-          docker compose ps
+          docker --context desktop-linux compose ps
 
+      # --------------------------------------------------------
+      # Remove temporary registry credentials
+      # --------------------------------------------------------
       - name: Remove temporary Docker credentials
         if: always()
         shell: bash
