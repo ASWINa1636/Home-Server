@@ -1,4 +1,3 @@
-```yaml
 name: HomeServer CI/CD
 
 on:
@@ -298,4 +297,3 @@ jobs:
              [[ "$DOCKER_CONFIG" == "$RUNNER_TEMP"/docker-config-* ]]; then
             rm -rf -- "$DOCKER_CONFIG"
           fi
-```
