@@ -133,22 +133,24 @@ jobs:
       # --------------------------------------------------------
       # Configure Docker Desktop and isolated credentials
       # --------------------------------------------------------
+      
       - name: Configure Docker Desktop
         shell: bash
         run: |
           set -euo pipefail
 
-          docker context inspect desktop-linux >/dev/null
-
-          echo "DOCKER_CONTEXT=desktop-linux" >> "$GITHUB_ENV"
-
           DOCKER_CONFIG_DIR="$RUNNER_TEMP/docker-config-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "$DOCKER_CONFIG_DIR"
           chmod 700 "$DOCKER_CONFIG_DIR"
 
-          echo "DOCKER_CONFIG=$DOCKER_CONFIG_DIR" >> "$GITHUB_ENV"
+          # Preserve the real Docker Desktop context configuration.
+          cp -a "$HOME/.docker/contexts" "$DOCKER_CONFIG_DIR/contexts"
 
-          docker --context desktop-linux info
+          echo "DOCKER_CONFIG=$DOCKER_CONFIG_DIR" >> "$GITHUB_ENV"
+          echo "DOCKER_HOST=unix://$HOME/.docker/desktop/docker.sock" >> "$GITHUB_ENV"
+
+          docker info
+
 
       # --------------------------------------------------------
       # Authenticate to GitHub Container Registry
@@ -162,7 +164,7 @@ jobs:
           set -euo pipefail
 
           printf '%s' "$GHCR_TOKEN" |
-            docker --context desktop-linux login ghcr.io \
+            docker login ghcr.io \
               --username "$GHCR_USER" \
               --password-stdin
 
@@ -193,7 +195,7 @@ jobs:
           set -euo pipefail
           cd "$HOME/homeserver"
 
-          docker --context desktop-linux compose pull
+          docker compose pull
 
       # --------------------------------------------------------
       # Back up SQLite using the online backup API
@@ -249,12 +251,12 @@ jobs:
           set -euo pipefail
 
           BACKEND_ID="$(
-            docker --context desktop-linux inspect \
+            docker inspect \
               --format='{{.Image}}' homeserver-backend
           )"
 
           FRONTEND_ID="$(
-            docker --context desktop-linux inspect \
+            docker inspect \
               --format='{{.Image}}' homeserver-frontend
           )"
 
@@ -270,7 +272,7 @@ jobs:
           set -euo pipefail
           cd "$HOME/homeserver"
 
-          docker --context desktop-linux compose up \
+          docker compose up \
             -d --remove-orphans
 
       # --------------------------------------------------------
@@ -302,7 +304,7 @@ jobs:
         shell: bash
         run: |
           cd "$HOME/homeserver"
-          docker --context desktop-linux compose ps
+          docker compose ps
 
       # --------------------------------------------------------
       # Roll back application images if deployment fails
@@ -318,11 +320,11 @@ jobs:
 
           cd "$HOME/homeserver"
 
-          docker --context desktop-linux tag \
+          docker tag \
             "$PREVIOUS_BACKEND_ID" \
             "$BACKEND_IMAGE:rollback"
 
-          docker --context desktop-linux tag \
+          docker tag \
             "$PREVIOUS_FRONTEND_ID" \
             "$FRONTEND_IMAGE:rollback"
 
@@ -337,13 +339,13 @@ jobs:
               image: ghcr.io/aswina1636/home-server-frontend:rollback
           YAML
 
-          docker --context desktop-linux compose \
+          docker compose \
             -f docker-compose.yml \
             -f "$OVERRIDE_FILE" \
             up -d --remove-orphans
 
           echo "Previous application images restored."
-          docker --context desktop-linux compose ps
+          docker compose ps
 
       # --------------------------------------------------------
       # Remove temporary registry credentials
